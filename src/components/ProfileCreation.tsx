@@ -14,21 +14,13 @@ import {
   useToast,
   Container,
   Flex,
-  IconButton,
-  SimpleGrid,
-  CheckboxGroup,
-  RadioGroup,
-  Radio,
-  Stack,
-  Divider
+  IconButton
 } from '@chakra-ui/react';
 import { ArrowBackIcon } from '@chakra-ui/icons';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
-import { updateUserProfile } from '../services/userService';
-import { User } from 'firebase/auth';
-import { signOut } from 'firebase/auth';
+import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 
 interface ProfileCreationProps {
@@ -81,11 +73,11 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     e.preventDefault();
     
     try {
-      // Validate inputs
-      if (!displayName || !location || !priceRange || interests.length === 0 || cuisinePreferences.length === 0) {
+      // Validate required fields
+      if (!displayName || !location || !priceRange) {
         toast({
           title: 'Incomplete Profile',
-          description: 'Please fill out all fields',
+          description: 'Please fill out display name, location, and price range',
           status: 'error',
           duration: 3000,
           isClosable: true
@@ -93,21 +85,26 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         return;
       }
 
-      // Update user profile
-      await updateUserProfile(user.uid, {
+      // Prepare user profile data
+      const profileData = {
+        uid: user.uid,
+        email: user.email || '',
         displayName,
         location,
         priceRange,
-        interests,
-        cuisinePreferences,
-        email: user.email || ''
-      });
+        interests, // Optional
+        cuisinePreferences, // Optional
+        createdAt: Timestamp.now(),
+        points: 0,
+        streak: 0,
+        badges: [],
+        matches: []
+      };
 
-      // Call onComplete callback if provided
-      if (onComplete) {
-        onComplete();
-      }
+      // Save profile to Firestore
+      await setDoc(doc(db, 'users', user.uid), profileData);
 
+      // Show success toast
       toast({
         title: 'Profile Created',
         description: 'Your profile has been successfully created.',
@@ -115,6 +112,11 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         duration: 3000,
         isClosable: true
       });
+
+      // Call onComplete callback if provided
+      if (onComplete) {
+        onComplete();
+      }
     } catch (error) {
       console.error('Profile creation error:', error);
       toast({
@@ -210,8 +212,8 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                   </Select>
                 </FormControl>
 
-                <FormControl isRequired>
-                  <FormLabel>Interests</FormLabel>
+                <FormControl>
+                  <FormLabel>Interests (Optional)</FormLabel>
                   <HStack flexWrap="wrap">
                     {INTERESTS.map(interest => (
                       <Checkbox
@@ -225,8 +227,8 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                   </HStack>
                 </FormControl>
 
-                <FormControl isRequired>
-                  <FormLabel>Cuisine Preferences</FormLabel>
+                <FormControl>
+                  <FormLabel>Cuisine Preferences (Optional)</FormLabel>
                   <HStack flexWrap="wrap">
                     {CUISINES.map(cuisine => (
                       <Checkbox
