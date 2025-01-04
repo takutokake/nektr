@@ -1,207 +1,177 @@
-import { useState } from 'react';
-import {
-  Box,
-  Button,
-  FormControl,
-  FormLabel,
-  Input,
-  VStack,
-  useToast,
-  Heading,
-  NumberInput,
-  NumberInputField,
-  Textarea,
+import React, { useState } from 'react';
+import { 
+  Box, 
+  VStack, 
+  FormControl, 
+  FormLabel, 
+  Input, 
+  Button, 
   Select,
-  HStack,
+  Checkbox,
+  useToast
 } from '@chakra-ui/react';
-import { collection, doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { Drop } from '../../types';
+import { Timestamp } from 'firebase/firestore';
+import { Drop, createDefaultDrop } from '../../types';
 
-export default function AdminDrops() {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [maxParticipants, setMaxParticipants] = useState(20);
-  const [location, setLocation] = useState('USC');
-  const [priceRange, setPriceRange] = useState('$$');
-  const [startDate, setStartDate] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [registrationDeadlineDate, setRegistrationDeadlineDate] = useState('');
-  const [registrationDeadlineTime, setRegistrationDeadlineTime] = useState('');
-  const [loading, setLoading] = useState(false);
+interface AdminDropsProps {
+  onDropCreated?: (drop: Drop) => Promise<void>;
+}
+
+const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
   const toast = useToast();
+  const [dropData, setDropData] = useState({
+    title: '',
+    description: '',
+    startTime: Timestamp.now(),
+    registrationDeadline: Timestamp.now(),
+    maxParticipants: 10,
+    currentParticipants: 0,
+    location: '',
+    priceRange: '$',
+    status: 'upcoming' as const,
+    registeredUsers: [],
+    theme: 'General',
+    isSpecialEvent: false,
+    endTime: Timestamp.now()
+  });
 
-  const createDrop = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    
+    const newDrop = createDefaultDrop({
+      title: dropData.title,
+      description: dropData.description,
+      startTime: dropData.startTime,
+      endTime: dropData.endTime,
+      location: dropData.location,
+      maxParticipants: dropData.maxParticipants,
+      theme: dropData.theme,
+      isSpecialEvent: dropData.isSpecialEvent,
+      registrationDeadline: dropData.registrationDeadline,
+      priceRange: dropData.priceRange,
+      status: dropData.status,
+    });
 
     try {
-      const startDateTime = new Date(`${startDate}T${startTime}`);
-      const deadlineDateTime = new Date(`${registrationDeadlineDate}T${registrationDeadlineTime}`);
-
-      if (deadlineDateTime >= startDateTime) {
-        toast({
-          title: 'Invalid dates',
-          description: 'Registration deadline must be before the drop start time',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
+      if (onDropCreated) {
+        await onDropCreated(newDrop);
       }
-
-      const dropData: Omit<Drop, 'id'> = {
-        title,
-        description,
-        startTime: Timestamp.fromDate(startDateTime),
-        registrationDeadline: Timestamp.fromDate(deadlineDateTime),
-        maxParticipants,
-        currentParticipants: 0,
-        location,
-        priceRange,
-        status: 'upcoming',
-        registeredUsers: [],
-      };
-
-      const dropRef = doc(collection(db, 'drops'));
-      await setDoc(dropRef, dropData);
-
+      
       toast({
-        title: 'Drop created!',
-        status: 'success',
+        title: "Drop Created",
+        description: "Your new drop has been successfully created.",
+        status: "success",
         duration: 3000,
         isClosable: true,
       });
 
       // Reset form
-      setTitle('');
-      setDescription('');
-      setMaxParticipants(20);
-      setLocation('USC');
-      setPriceRange('$$');
-      setStartDate('');
-      setStartTime('');
-      setRegistrationDeadlineDate('');
-      setRegistrationDeadlineTime('');
+      setDropData({
+        title: '',
+        description: '',
+        startTime: Timestamp.now(),
+        registrationDeadline: Timestamp.now(),
+        maxParticipants: 10,
+        currentParticipants: 0,
+        location: '',
+        priceRange: '$',
+        status: 'upcoming',
+        registeredUsers: [],
+        theme: 'General',
+        isSpecialEvent: false,
+        endTime: Timestamp.now()
+      });
     } catch (error) {
-      console.error('Error creating drop:', error);
       toast({
-        title: 'Error creating drop',
-        description: 'Please try again later',
-        status: 'error',
+        title: "Error",
+        description: "Failed to create drop.",
+        status: "error",
         duration: 3000,
         isClosable: true,
       });
-    } finally {
-      setLoading(false);
+      console.error(error);
     }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setDropData(prev => ({
+      ...prev,
+      [name]: name === 'maxParticipants' ? Number(value) : value
+    }));
+  };
+
   return (
-    <Box p={6} borderWidth={1} borderRadius="lg" bg="white">
-      <VStack spacing={6} align="stretch" as="form" onSubmit={createDrop}>
-        <Heading size="lg">Create New Drop</Heading>
-
-        <FormControl isRequired>
-          <FormLabel>Title</FormLabel>
-          <Input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Drop title"
-          />
-        </FormControl>
-
-        <FormControl isRequired>
-          <FormLabel>Description</FormLabel>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Drop description"
-          />
-        </FormControl>
-
-        <HStack spacing={4}>
+    <Box p={6} borderWidth={1} borderRadius="lg">
+      <form onSubmit={handleSubmit}>
+        <VStack spacing={4}>
           <FormControl isRequired>
+            <FormLabel>Drop Title</FormLabel>
+            <Input 
+              name="title"
+              value={dropData.title}
+              onChange={handleInputChange}
+              placeholder="Enter drop title"
+            />
+          </FormControl>
+
+          <FormControl isRequired>
+            <FormLabel>Description</FormLabel>
+            <Input 
+              name="description"
+              value={dropData.description}
+              onChange={handleInputChange}
+              placeholder="Describe the drop"
+            />
+          </FormControl>
+
+          <FormControl>
             <FormLabel>Location</FormLabel>
-            <Select value={location} onChange={(e) => setLocation(e.target.value)}>
-              <option value="USC">USC Area</option>
-              <option value="UCLA">UCLA Area</option>
+            <Input 
+              name="location"
+              value={dropData.location}
+              onChange={handleInputChange}
+              placeholder="Enter location"
+            />
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>Theme</FormLabel>
+            <Select 
+              name="theme"
+              value={dropData.theme}
+              onChange={handleInputChange}
+            >
+              <option value="General">General</option>
+              <option value="Tech">Tech</option>
+              <option value="Food">Food</option>
+              <option value="Sports">Sports</option>
             </Select>
           </FormControl>
 
-          <FormControl isRequired>
-            <FormLabel>Price Range</FormLabel>
-            <Select value={priceRange} onChange={(e) => setPriceRange(e.target.value)}>
-              <option value="$">$ (Under $15)</option>
-              <option value="$$">$$ ($15-$30)</option>
-              <option value="$$$">$$$ ($31-$60)</option>
-              <option value="$$$$">$$$$ ($61+)</option>
-            </Select>
+          <FormControl>
+            <Checkbox 
+              isChecked={dropData.isSpecialEvent}
+              onChange={(e) => setDropData(prev => ({
+                ...prev, 
+                isSpecialEvent: e.target.checked
+              }))}
+            >
+              Special Event
+            </Checkbox>
           </FormControl>
-        </HStack>
 
-        <FormControl isRequired>
-          <FormLabel>Maximum Participants</FormLabel>
-          <NumberInput
-            min={2}
-            max={100}
-            value={maxParticipants}
-            onChange={(_, value) => setMaxParticipants(value)}
+          <Button 
+            colorScheme="blue" 
+            type="submit" 
+            width="full"
           >
-            <NumberInputField />
-          </NumberInput>
-        </FormControl>
-
-        <HStack spacing={4}>
-          <FormControl isRequired>
-            <FormLabel>Start Date</FormLabel>
-            <Input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </FormControl>
-
-          <FormControl isRequired>
-            <FormLabel>Start Time</FormLabel>
-            <Input
-              type="time"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </FormControl>
-        </HStack>
-
-        <HStack spacing={4}>
-          <FormControl isRequired>
-            <FormLabel>Registration Deadline Date</FormLabel>
-            <Input
-              type="date"
-              value={registrationDeadlineDate}
-              onChange={(e) => setRegistrationDeadlineDate(e.target.value)}
-            />
-          </FormControl>
-
-          <FormControl isRequired>
-            <FormLabel>Registration Deadline Time</FormLabel>
-            <Input
-              type="time"
-              value={registrationDeadlineTime}
-              onChange={(e) => setRegistrationDeadlineTime(e.target.value)}
-            />
-          </FormControl>
-        </HStack>
-
-        <Button
-          type="submit"
-          colorScheme="blue"
-          size="lg"
-          isLoading={loading}
-          loadingText="Creating Drop..."
-        >
-          Create Drop
-        </Button>
-      </VStack>
+            Create Drop
+          </Button>
+        </VStack>
+      </form>
     </Box>
   );
-}
+};
+
+export default AdminDrops;

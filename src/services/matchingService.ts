@@ -1,6 +1,15 @@
-import { collection, query, where, getDocs, doc, setDoc, updateDoc, Timestamp } from 'firebase/firestore';
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  query, 
+  where, 
+  addDoc, 
+  updateDoc, 
+  Timestamp 
+} from 'firebase/firestore';
 import { db } from '../firebase';
-import { UserProfile, Drop, Match } from '../types';
+import { UserProfile, Drop, Match, createDefaultMatch } from '../types';
 
 interface MatchScore {
   userId: string;
@@ -76,17 +85,12 @@ export const generateMatches = async (dropId: string) => {
 
         if (bestMatch && bestMatchIndex !== -1) {
           // Create match
-          const match: Match = {
-            id: `${dropId}_${user1.uid}_${bestMatch.userId}`,
+          const match = await createMatch(
+            [user1.uid, bestMatch.userId],
             dropId,
-            users: [user1.uid, bestMatch.userId],
-            commonInterests: bestMatch.commonInterests,
-            commonCuisines: bestMatch.commonCuisines,
-            compatibilityScore: bestMatch.score,
-            status: 'pending',
-            createdAt: Timestamp.now(),
-            meetingDetails: null
-          };
+            bestMatch.commonInterests,
+            bestMatch.commonCuisines
+          );
 
           matches.push(match);
           usedUsers.add(user1.uid);
@@ -102,12 +106,6 @@ export const generateMatches = async (dropId: string) => {
       }
     });
 
-    // Save matches to Firestore
-    const matchesCollection = collection(db, 'matches');
-    for (const match of matches) {
-      await setDoc(doc(matchesCollection, match.id), match);
-    }
-
     // Update drop with match status
     await updateDoc(doc(db, 'drops', dropId), {
       status: 'matched',
@@ -121,7 +119,50 @@ export const generateMatches = async (dropId: string) => {
   }
 };
 
-// Helper function to calculate compatibility score
+export const createMatch = async (
+  users: string[], 
+  dropId: string, 
+  commonInterests: string[], 
+  commonCuisines: string[]
+): Promise<Match> => {
+  try {
+    const matchData = createDefaultMatch({
+      users,
+      dropId,
+      commonInterests,
+      commonCuisines,
+      compatibility: calculateCompatibility(commonInterests, commonCuisines),
+      meetingDetails: {
+        location: 'TBD',
+        time: Timestamp.now()
+      }
+    });
+
+    const matchRef = await addDoc(collection(db, 'matches'), matchData);
+    return { ...matchData, id: matchRef.id };
+  } catch (error) {
+    console.error('Error creating match:', error);
+    throw error;
+  }
+};
+
+const calculateCompatibility = (
+  commonInterests: string[], 
+  commonCuisines: string[]
+): number => {
+  // Simple compatibility calculation
+  const interestWeight = 0.6;
+  const cuisineWeight = 0.4;
+
+  const interestScore = commonInterests.length * 10;
+  const cuisineScore = commonCuisines.length * 10;
+
+  return Math.min(
+    (interestScore * interestWeight + cuisineScore * cuisineWeight), 
+    100
+  );
+};
+
 const calculateCompatibilityScore = (
   commonInterestsCount: number,
   commonCuisinesCount: number,
@@ -143,4 +184,65 @@ const calculateCompatibilityScore = (
     cuisineScore * CUISINE_WEIGHT +
     priceScore * PRICE_WEIGHT
   ) * 100; // Convert to percentage
+};
+
+export const findPotentialMatches = async (
+  user: UserProfile, 
+  drop: Drop
+): Promise<UserProfile[]> => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(
+      usersRef, 
+      where('uid', '!=', user.uid),
+      where('location', '==', user.location)
+    );
+
+    const querySnapshot = await getDocs(q);
+    const potentialMatches: UserProfile[] = [];
+
+    querySnapshot.forEach((doc) => {
+      const potentialMatch = doc.data() as UserProfile;
+      
+      // Basic matching logic
+      const commonInterests = user.interests.filter(
+        interest => potentialMatch.interests.includes(interest)
+      );
+
+      const commonCuisines = user.cuisinePreferences.filter(
+        cuisine => potentialMatch.cuisinePreferences.includes(cuisine)
+      );
+
+      if (commonInterests.length > 0 || commonCuisines.length > 0) {
+        potentialMatches.push(potentialMatch);
+      }
+    });
+
+    return potentialMatches;
+  } catch (error) {
+    console.error('Error finding potential matches:', error);
+    return [];
+  }
+};
+
+export const updateMatchDetails = async (
+  matchId: string, 
+  meetingDetails: { 
+    location?: string | null; 
+    time?: Timestamp | null; 
+  }
+): Promise<void> => {
+  try {
+    const matchRef = doc(db, 'matches', matchId);
+    
+    await updateDoc(matchRef, {
+      meetingDetails: {
+        location: meetingDetails.location || 'TBD',
+        time: meetingDetails.time || Timestamp.now()
+      }
+    });
+  } catch (error) {
+    console.error('Error updating match details:', error);
+    throw error;
+  }
 };

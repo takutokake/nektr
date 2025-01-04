@@ -1,122 +1,89 @@
-import {
-  Box,
-  Grid,
-  VStack,
-  HStack,
-  Text,
-  Progress,
-  Badge,
-  Button,
-  Image,
-  SimpleGrid,
-} from '@chakra-ui/react';
-import { Challenge, Badge as BadgeType } from '../../types';
+import React from 'react';
+import { Box, VStack, Text, Heading, HStack, Badge as ChakraBadge } from '@chakra-ui/react';
+import { FaTrophy, FaAward } from 'react-icons/fa';
+import { UserProfile, Challenge, Badge } from '../../types';
 
 interface ChallengesSectionProps {
-  activeChallenges: Challenge[];
-  completedChallenges: Challenge[];
-  points: number;
-  badges: BadgeType[];
+  user: UserProfile;
 }
 
-export default function ChallengesSection({
-  activeChallenges,
-  completedChallenges,
-  points,
-  badges,
-}: ChallengesSectionProps) {
-  return (
-    <Box py={8}>
-      <Grid templateColumns={{ base: '1fr', md: 'repeat(2, 1fr)' }} gap={6}>
-        {/* Points and Badges */}
-        <Box
-          p={6}
-          borderRadius="lg"
-          bg="white"
-          boxShadow="md"
-          border="1px"
-          borderColor="gray.200"
-        >
-          <VStack spacing={4} align="stretch">
-            <Text fontSize="xl" fontWeight="bold">
-              Your Achievements
-            </Text>
-            <HStack justify="space-between" bg="purple.50" p={4} borderRadius="md">
-              <Text fontSize="lg">Total Points</Text>
-              <Text fontSize="2xl" fontWeight="bold" color="purple.500">
-                {points}
-              </Text>
-            </HStack>
-            <Text fontSize="lg" fontWeight="semibold">
-              Recent Badges
-            </Text>
-            <SimpleGrid columns={4} spacing={4}>
-              {badges.slice(0, 4).map((badge) => (
-                <VStack key={badge.id}>
-                  <Image
-                    src={badge.imageUrl}
-                    alt={badge.name}
-                    boxSize="50px"
-                    objectFit="cover"
-                    borderRadius="full"
-                  />
-                  <Text fontSize="xs" textAlign="center">
-                    {badge.name}
-                  </Text>
-                </VStack>
-              ))}
-            </SimpleGrid>
-          </VStack>
-        </Box>
+const ChallengesSection: React.FC<ChallengesSectionProps> = ({ user }) => {
+  // Mock challenges and badges for development
+  const mockChallenges: Challenge[] = [
+    { 
+      id: 'challenge1', 
+      title: 'First Match', 
+      description: 'Complete your first social match', 
+      points: 100 
+    },
+    { 
+      id: 'challenge2', 
+      title: 'Streak Master', 
+      description: 'Maintain a 5-day streak', 
+      points: 250 
+    }
+  ];
 
-        {/* Active Challenges */}
-        <Box
-          p={6}
-          borderRadius="lg"
-          bg="white"
-          boxShadow="md"
-          border="1px"
-          borderColor="gray.200"
-        >
-          <VStack spacing={4} align="stretch">
-            <Text fontSize="xl" fontWeight="bold">
-              Active Challenges
-            </Text>
-            {activeChallenges.map((challenge) => (
-              <Box
-                key={challenge.id}
-                p={4}
-                borderRadius="md"
-                border="1px"
-                borderColor="gray.200"
-              >
-                <VStack align="stretch" spacing={2}>
-                  <HStack justify="space-between">
-                    <Text fontWeight="semibold">{challenge.title}</Text>
-                    <Badge colorScheme="green">
-                      +{challenge.points} pts
-                    </Badge>
-                  </HStack>
-                  <Text fontSize="sm" color="gray.600">
-                    {challenge.description}
-                  </Text>
-                  <Progress
-                    value={(challenge.progress / challenge.target) * 100}
-                    size="sm"
-                    colorScheme="blue"
-                  />
-                  <Text fontSize="sm" textAlign="right">
-                    {challenge.progress}/{challenge.target} completed
-                  </Text>
-                </VStack>
-              </Box>
-            ))}
-            <Button colorScheme="blue" variant="outline" size="sm">
-              View All Challenges
-            </Button>
-          </VStack>
-        </Box>
-      </Grid>
+  const mockBadges: Badge[] = [
+    { 
+      id: 'badge1', 
+      name: 'Social Butterfly', 
+      description: 'Made 5 connections', 
+      icon: 'butterfly' 
+    },
+    { 
+      id: 'badge2', 
+      name: 'Foodie Explorer', 
+      description: 'Tried 3 different cuisines', 
+      icon: 'fork' 
+    }
+  ];
+
+  return (
+    <Box p={4} borderWidth={1} borderRadius="lg">
+      <VStack align="stretch" spacing={4}>
+        <Heading size="md" display="flex" alignItems="center">
+          <FaTrophy style={{ marginRight: '10px' }} /> Challenges
+        </Heading>
+
+        {mockChallenges.map((challenge) => (
+          <HStack 
+            key={challenge.id} 
+            bg="gray.50" 
+            p={3} 
+            borderRadius="md" 
+            justifyContent="space-between"
+          >
+            <VStack align="start" spacing={1}>
+              <Text fontWeight="bold">{challenge.title}</Text>
+              <Text fontSize="sm" color="gray.600">{challenge.description}</Text>
+            </VStack>
+            <ChakraBadge colorScheme="green">{challenge.points} pts</ChakraBadge>
+          </HStack>
+        ))}
+
+        <Heading size="md" mt={4} display="flex" alignItems="center">
+          <FaAward style={{ marginRight: '10px' }} /> Badges
+        </Heading>
+
+        <HStack spacing={3}>
+          {mockBadges.map((badge) => (
+            <VStack 
+              key={badge.id} 
+              bg="gray.50" 
+              p={3} 
+              borderRadius="md" 
+              align="center" 
+              width="full"
+            >
+              <Text fontWeight="bold">{badge.name}</Text>
+              <Text fontSize="sm" color="gray.600">{badge.description}</Text>
+            </VStack>
+          ))}
+        </HStack>
+      </VStack>
     </Box>
   );
-}
+};
+
+export default ChallengesSection;
