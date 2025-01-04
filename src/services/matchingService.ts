@@ -155,8 +155,8 @@ const calculateCompatibility = (
 const calculateCompatibilityScore = (
   commonInterestsCount: number,
   commonCuisinesCount: number,
-  INTEREST_WEIGHT = 0.7,
-  CUISINE_WEIGHT = 0.3,
+  INTEREST_WEIGHT = 0.6,
+  CUISINE_WEIGHT = 0.4,
   PRICE_WEIGHT = 0
 ): number => {
   const interestScore = commonInterestsCount * 10;
