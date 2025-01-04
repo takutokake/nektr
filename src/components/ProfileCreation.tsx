@@ -1,371 +1,260 @@
-import { useState } from 'react';
-import {
-  Box,
-  Button,
-  FormControl,
-  FormLabel,
-  Input,
-  VStack,
-  Text,
+import React, { useState } from 'react';
+import { 
+  Box, 
+  Button, 
+  FormControl, 
+  FormLabel, 
+  Input, 
+  VStack, 
+  Heading, 
+  Text, 
+  HStack, 
+  Checkbox, 
+  Select,
   useToast,
-  Heading,
-  Checkbox,
-  CheckboxGroup,
-  SimpleGrid,
   Container,
+  Flex,
+  IconButton,
+  SimpleGrid,
+  CheckboxGroup,
   RadioGroup,
   Radio,
   Stack,
-  Divider,
+  Divider
 } from '@chakra-ui/react';
+import { ArrowBackIcon } from '@chakra-ui/icons';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
-import { UserProfile } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { updateUserProfile } from '../services/userService';
+import { User } from 'firebase/auth';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 
 interface ProfileCreationProps {
-  user: any;
-  onComplete: () => void;
+  user: User;
+  onComplete?: () => void;
 }
 
 const INTERESTS = [
-  'Coffee',
-  'Tea',
-  'Food',
-  'Technology',
-  'Sports',
-  'Music',
-  'Art',
-  'Reading',
-  'Travel',
-  'Photography',
-  'Gaming',
-  'Fitness',
+  'Technology', 'Food', 'Sports', 'Music', 'Travel', 
+  'Art', 'Gaming', 'Fitness', 'Movies', 'Reading'
 ];
 
-const MEETING_PREFERENCES = [
-  'Coffee Shop',
-  'Restaurant',
-  'Park',
-  'Office',
-  'Library',
+const CUISINES = [
+  'Italian', 'Japanese', 'Mexican', 'Chinese', 'Indian', 
+  'Thai', 'Mediterranean', 'American', 'Korean', 'French'
 ];
 
-const CUISINE_PREFERENCES = [
-  'Italian',
-  'Japanese',
-  'Chinese',
-  'Mexican',
-  'Indian',
-  'American',
-  'Thai',
-  'Mediterranean',
-];
-
-const PRICE_RANGES = [
-  { value: '$', label: '$ (Under $15)', description: 'Budget-friendly options' },
-  { value: '$$', label: '$$ ($15-$30)', description: 'Moderate pricing' },
-  { value: '$$$', label: '$$$ ($31-$60)', description: 'Upscale dining' },
-  { value: '$$$$', label: '$$$$ ($61+)', description: 'Fine dining' },
-];
+const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 
 const LOCATIONS = [
   { value: 'USC', label: 'USC Area', description: 'University Park & surrounding neighborhoods' },
   { value: 'UCLA', label: 'UCLA Area', description: 'Westwood & surrounding neighborhoods' },
 ];
 
-export default function ProfileCreation({ user, onComplete }: ProfileCreationProps) {
-  const [displayName, setDisplayName] = useState(user.displayName || '');
+const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) => {
+  const [displayName, setDisplayName] = useState('');
+  const [location, setLocation] = useState('');
+  const [priceRange, setPriceRange] = useState('');
   const [interests, setInterests] = useState<string[]>([]);
-  const [meetingPreferences, setMeetingPreferences] = useState<string[]>([]);
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>([]);
-  const [location, setLocation] = useState<string>('');
-  const [priceRange, setPriceRange] = useState<string>('');
-  const [loading, setLoading] = useState(false);
   const toast = useToast();
+
+  const handleInterestToggle = (interest: string) => {
+    setInterests(prev => 
+      prev.includes(interest) 
+        ? prev.filter(i => i !== interest) 
+        : [...prev, interest]
+    );
+  };
+
+  const handleCuisineToggle = (cuisine: string) => {
+    setCuisinePreferences(prev => 
+      prev.includes(cuisine) 
+        ? prev.filter(c => c !== cuisine) 
+        : [...prev, cuisine]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validation
-    if (!displayName) {
-      toast({
-        title: 'Display name required',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (interests.length < 2) {
-      toast({
-        title: 'Please select at least 2 interests',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (meetingPreferences.length < 2) {
-      toast({
-        title: 'Please select at least 2 meeting preferences',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (!location) {
-      toast({
-        title: 'Please select your location',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (!priceRange) {
-      toast({
-        title: 'Please select your price range preference',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setLoading(true);
-
     try {
-      const now = Timestamp.now();
-      const profileData = {
-        uid: user.uid,
-        email: user.email,
+      // Validate inputs
+      if (!displayName || !location || !priceRange || interests.length === 0 || cuisinePreferences.length === 0) {
+        toast({
+          title: 'Incomplete Profile',
+          description: 'Please fill out all fields',
+          status: 'error',
+          duration: 3000,
+          isClosable: true
+        });
+        return;
+      }
+
+      // Update user profile
+      await updateUserProfile(user.uid, {
         displayName,
-        interests,
-        meetingPreferences,
-        cuisinePreferences,
         location,
         priceRange,
-        points: 0,
-        streak: 0,
-        badges: [],
-        completedChallenges: [],
-        activeChallenges: [],
-        matches: [],
-        createdAt: now,
-        lastActive: now,
-      };
+        interests,
+        cuisinePreferences,
+        email: user.email || ''
+      });
 
-      console.log('Attempting to save profile for user:', user.uid);
-      await setDoc(doc(db, 'users', user.uid), profileData);
-      
-      toast({
-        title: 'Profile created!',
-        description: "You're all set to start connecting!",
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
-      
-      onComplete();
-    } catch (error: any) {
-      console.error('Error creating profile:', error);
-      let errorMessage = 'Please try again later.';
-      
-      if (error.code === 'permission-denied') {
-        errorMessage = 'Permission denied. Please make sure you are properly signed in.';
-        // Try to refresh the auth token
-        try {
-          const token = await user.getIdToken(true);
-          console.log('Refreshed auth token:', token ? 'success' : 'failed');
-        } catch (tokenError) {
-          console.error('Error refreshing token:', tokenError);
-        }
+      // Call onComplete callback if provided
+      if (onComplete) {
+        onComplete();
       }
-      
+
       toast({
-        title: 'Error creating profile',
-        description: errorMessage,
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
+        title: 'Profile Created',
+        description: 'Your profile has been successfully created.',
+        status: 'success',
+        duration: 3000,
+        isClosable: true
       });
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Profile creation error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create profile. Please try again.',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      });
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Sign out error:', error);
     }
   };
 
   return (
-    <Container maxW="container.md" py={12}>
-      <Box as="form" onSubmit={handleSubmit}>
-        <VStack spacing={8} align="stretch">
-          <Box textAlign="center" pb={6}>
-            <Heading size="xl">Create Your Profile</Heading>
-            <Text mt={2} color="gray.600">Tell us about yourself to find better matches</Text>
-          </Box>
+    <Flex 
+      height="100vh" 
+      alignItems="center" 
+      justifyContent="center" 
+      bg="gray.50"
+    >
+      <Container maxW="md" position="relative">
+        <IconButton 
+          icon={<ArrowBackIcon />} 
+          aria-label="Go Back" 
+          position="absolute" 
+          top="-50px" 
+          left="0" 
+          onClick={handleSignOut}
+          variant="ghost"
+          colorScheme="gray"
+        />
+        
+        <Box 
+          bg="white" 
+          p={8} 
+          borderRadius="xl" 
+          boxShadow="lg"
+          width="100%"
+        >
+          <VStack spacing={6} align="stretch">
+            <Heading 
+              textAlign="center" 
+              color="pink.500" 
+              mb={4}
+            >
+              Create Your Profile
+            </Heading>
 
-          <FormControl isRequired>
-            <FormLabel fontSize="lg">Display Name</FormLabel>
-            <Input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="How should we call you?"
-              size="lg"
-            />
-          </FormControl>
+            <form onSubmit={handleSubmit}>
+              <VStack spacing={4}>
+                <FormControl isRequired>
+                  <FormLabel>Display Name</FormLabel>
+                  <Input 
+                    type="text" 
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder="Enter your display name"
+                  />
+                </FormControl>
 
-          <Divider />
-
-          <Box>
-            <FormLabel fontSize="lg">Location</FormLabel>
-            <RadioGroup onChange={setLocation} value={location}>
-              <Stack spacing={4}>
-                {LOCATIONS.map(({ value, label, description }) => (
-                  <Box
-                    key={value}
-                    p={4}
-                    borderWidth={1}
-                    borderRadius="md"
-                    borderColor={location === value ? 'blue.500' : 'gray.200'}
+                <FormControl isRequired>
+                  <FormLabel>Location</FormLabel>
+                  <Select 
+                    placeholder="Select your area"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
                   >
-                    <Radio value={value}>
-                      <Text fontWeight="bold">{label}</Text>
-                      <Text fontSize="sm" color="gray.600">{description}</Text>
-                    </Radio>
-                  </Box>
-                ))}
-              </Stack>
-            </RadioGroup>
-          </Box>
+                    {LOCATIONS.map(loc => (
+                      <option key={loc.value} value={loc.value}>
+                        {loc.label}
+                      </option>
+                    ))}
+                  </Select>
+                </FormControl>
 
-          <Divider />
-
-          <Box>
-            <FormLabel fontSize="lg">Price Range Preference</FormLabel>
-            <RadioGroup onChange={setPriceRange} value={priceRange}>
-              <Stack spacing={4}>
-                {PRICE_RANGES.map(({ value, label, description }) => (
-                  <Box
-                    key={value}
-                    p={4}
-                    borderWidth={1}
-                    borderRadius="md"
-                    borderColor={priceRange === value ? 'blue.500' : 'gray.200'}
+                <FormControl isRequired>
+                  <FormLabel>Price Range</FormLabel>
+                  <Select 
+                    placeholder="Select price range"
+                    value={priceRange}
+                    onChange={(e) => setPriceRange(e.target.value)}
                   >
-                    <Radio value={value}>
-                      <Text fontWeight="bold">{label}</Text>
-                      <Text fontSize="sm" color="gray.600">{description}</Text>
-                    </Radio>
-                  </Box>
-                ))}
-              </Stack>
-            </RadioGroup>
-          </Box>
+                    {PRICE_RANGES.map(range => (
+                      <option key={range} value={range}>{range}</option>
+                    ))}
+                  </Select>
+                </FormControl>
 
-          <Divider />
+                <FormControl isRequired>
+                  <FormLabel>Interests</FormLabel>
+                  <HStack flexWrap="wrap">
+                    {INTERESTS.map(interest => (
+                      <Checkbox
+                        key={interest}
+                        isChecked={interests.includes(interest)}
+                        onChange={() => handleInterestToggle(interest)}
+                      >
+                        {interest}
+                      </Checkbox>
+                    ))}
+                  </HStack>
+                </FormControl>
 
-          <Box>
-            <FormLabel fontSize="lg">Interests (Select at least 2)</FormLabel>
-            <Text mb={4} fontSize="sm" color="gray.600">
-              Choose the activities you enjoy most
-            </Text>
-            <SimpleGrid columns={[2, 2, 3]} spacing={6}>
-              <CheckboxGroup
-                colorScheme="blue"
-                value={interests}
-                onChange={(values) => setInterests(values as string[])}
-              >
-                {INTERESTS.map((interest) => (
-                  <Checkbox
-                    key={interest}
-                    value={interest}
-                    size="lg"
-                    borderColor="gray.300"
-                  >
-                    {interest}
-                  </Checkbox>
-                ))}
-              </CheckboxGroup>
-            </SimpleGrid>
-          </Box>
+                <FormControl isRequired>
+                  <FormLabel>Cuisine Preferences</FormLabel>
+                  <HStack flexWrap="wrap">
+                    {CUISINES.map(cuisine => (
+                      <Checkbox
+                        key={cuisine}
+                        isChecked={cuisinePreferences.includes(cuisine)}
+                        onChange={() => handleCuisineToggle(cuisine)}
+                      >
+                        {cuisine}
+                      </Checkbox>
+                    ))}
+                  </HStack>
+                </FormControl>
 
-          <Divider />
-
-          <Box>
-            <FormLabel fontSize="lg">Meeting Preferences (Select at least 2)</FormLabel>
-            <Text mb={4} fontSize="sm" color="gray.600">
-              Where would you prefer to meet?
-            </Text>
-            <SimpleGrid columns={[2, 2, 3]} spacing={6}>
-              <CheckboxGroup
-                colorScheme="blue"
-                value={meetingPreferences}
-                onChange={(values) => setMeetingPreferences(values as string[])}
-              >
-                {MEETING_PREFERENCES.map((pref) => (
-                  <Checkbox
-                    key={pref}
-                    value={pref}
-                    size="lg"
-                    borderColor="gray.300"
-                  >
-                    {pref}
-                  </Checkbox>
-                ))}
-              </CheckboxGroup>
-            </SimpleGrid>
-          </Box>
-
-          <Divider />
-
-          <Box>
-            <FormLabel fontSize="lg">Cuisine Preferences</FormLabel>
-            <Text mb={4} fontSize="sm" color="gray.600">
-              What types of food do you enjoy?
-            </Text>
-            <SimpleGrid columns={[2, 2, 3]} spacing={6}>
-              <CheckboxGroup
-                colorScheme="blue"
-                value={cuisinePreferences}
-                onChange={(values) => setCuisinePreferences(values as string[])}
-              >
-                {CUISINE_PREFERENCES.map((cuisine) => (
-                  <Checkbox
-                    key={cuisine}
-                    value={cuisine}
-                    size="lg"
-                    borderColor="gray.300"
-                  >
-                    {cuisine}
-                  </Checkbox>
-                ))}
-              </CheckboxGroup>
-            </SimpleGrid>
-          </Box>
-
-          <Button
-            type="submit"
-            colorScheme="blue"
-            size="lg"
-            isLoading={loading}
-            loadingText="Creating Profile..."
-            mt={8}
-            isDisabled={
-              !displayName ||
-              interests.length < 2 ||
-              meetingPreferences.length < 2 ||
-              !location ||
-              !priceRange
-            }
-          >
-            Create Profile
-          </Button>
-        </VStack>
-      </Box>
-    </Container>
+                <Button 
+                  colorScheme="pink" 
+                  type="submit" 
+                  width="full" 
+                  mt={4}
+                >
+                  Create Profile
+                </Button>
+              </VStack>
+            </form>
+          </VStack>
+        </Box>
+      </Container>
+    </Flex>
   );
-}
+};
+
+export default ProfileCreation;

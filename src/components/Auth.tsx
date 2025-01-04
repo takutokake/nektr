@@ -12,6 +12,7 @@ import {
   Container,
   Heading,
   FormErrorMessage,
+  Flex,
 } from '@chakra-ui/react';
 import {
   createUserWithEmailAndPassword,
@@ -132,90 +133,92 @@ export default function Auth() {
   };
 
   return (
-    <Container maxW="md" centerContent>
-      <Box w="100%" p={8} borderWidth={1} borderRadius="lg" bg="white" boxShadow="lg">
-        <VStack spacing={6}>
-          <Heading size="lg">{isSignUp ? 'Create Account' : 'Sign In'}</Heading>
-          
-          <VStack as="form" spacing={4} w="100%" onSubmit={handleEmailAuth}>
-            <FormControl isRequired isInvalid={!!error}>
-              <FormLabel>Email address</FormLabel>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  setError('');
-                }}
-                placeholder="Enter your email"
-                size="lg"
-                isDisabled={isLoading}
-              />
-            </FormControl>
+    <Flex height="100vh" alignItems="center" justifyContent="center" bg="gray.50">
+      <Container maxW="md">
+        <Box bg="white" p={8} borderRadius="lg" boxShadow="lg" width="100%">
+          <VStack spacing={6}>
+            <Heading size="lg">{isSignUp ? 'Create Account' : 'Sign In'}</Heading>
+            
+            <VStack as="form" spacing={4} w="100%" onSubmit={handleEmailAuth}>
+              <FormControl isRequired isInvalid={!!error}>
+                <FormLabel>Email address</FormLabel>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="Enter your email"
+                  size="lg"
+                  isDisabled={isLoading}
+                />
+              </FormControl>
 
-            <FormControl isRequired isInvalid={!!error}>
-              <FormLabel>Password</FormLabel>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
+              <FormControl isRequired isInvalid={!!error}>
+                <FormLabel>Password</FormLabel>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="Enter your password"
+                  size="lg"
+                  isDisabled={isLoading}
+                />
+                {error && <FormErrorMessage>{error}</FormErrorMessage>}
+              </FormControl>
+
+              <Button
+                type="submit"
+                colorScheme="blue"
+                size="lg"
+                width="full"
+                isLoading={isLoading}
+                loadingText={isSignUp ? 'Creating Account...' : 'Signing in...'}
+              >
+                {isSignUp ? 'Sign Up' : 'Sign In'}
+              </Button>
+            </VStack>
+
+            <Text>
+              {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+              <Button
+                variant="link"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
                   setError('');
                 }}
-                placeholder="Enter your password"
-                size="lg"
+                color="blue.500"
                 isDisabled={isLoading}
-              />
-              {error && <FormErrorMessage>{error}</FormErrorMessage>}
-            </FormControl>
+              >
+                {isSignUp ? 'Sign In' : 'Sign Up'}
+              </Button>
+            </Text>
+
+            <Divider />
 
             <Button
-              type="submit"
-              colorScheme="blue"
-              size="lg"
               width="full"
+              onClick={handleGoogleAuth}
+              size="lg"
               isLoading={isLoading}
-              loadingText={isSignUp ? 'Creating Account...' : 'Signing in...'}
+              loadingText="Signing in with Google..."
+              leftIcon={
+                <img
+                  src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
+                  alt="Google"
+                  style={{ width: '18px', height: '18px' }}
+                />
+              }
             >
-              {isSignUp ? 'Sign Up' : 'Sign In'}
+              Continue with Google
             </Button>
           </VStack>
-
-          <Text>
-            {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
-            <Button
-              variant="link"
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setError('');
-              }}
-              color="blue.500"
-              isDisabled={isLoading}
-            >
-              {isSignUp ? 'Sign In' : 'Sign Up'}
-            </Button>
-          </Text>
-
-          <Divider />
-
-          <Button
-            width="full"
-            onClick={handleGoogleAuth}
-            size="lg"
-            isLoading={isLoading}
-            loadingText="Signing in with Google..."
-            leftIcon={
-              <img
-                src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg"
-                alt="Google"
-                style={{ width: '18px', height: '18px' }}
-              />
-            }
-          >
-            Continue with Google
-          </Button>
-        </VStack>
-      </Box>
-    </Container>
+        </Box>
+      </Container>
+    </Flex>
   );
 }

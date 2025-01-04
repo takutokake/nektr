@@ -18,90 +18,80 @@ interface MatchScore {
   commonCuisines: string[];
 }
 
-export const generateMatches = async (dropId: string) => {
+export const generateDropMatches = async (dropId: string): Promise<Match[]> => {
   try {
-    // Get the drop
-    const dropDoc = await getDocs(query(collection(db, 'drops'), where('id', '==', dropId)));
-    const drop = { id: dropDoc.docs[0].id, ...dropDoc.docs[0].data() } as Drop;
+    // Fetch drop details
+    const dropsRef = collection(db, 'drops');
+    const usersRef = collection(db, 'users');
 
-    // Get all registered users for this drop
-    const registeredUsers = drop.registeredUsers;
+    // Fetch all users registered for this drop
+    const registeredUsersQuery = query(usersRef, where('registeredDrops', 'array-contains', dropId));
+    const registeredUsersSnapshot = await getDocs(registeredUsersQuery);
     
-    // Fetch full user profiles
-    const usersQuery = query(collection(db, 'users'), where('uid', 'in', registeredUsers));
-    const userDocs = await getDocs(usersQuery);
-    const users = userDocs.docs.map(doc => ({ ...doc.data() }) as UserProfile);
+    const registeredUsers: UserProfile[] = [];
+    registeredUsersSnapshot.forEach((doc) => {
+      registeredUsers.push(doc.data() as UserProfile);
+    });
 
-    // Calculate compatibility scores for all possible pairs
+    // Calculate match scores
+    const matchScores: MatchScore[] = [];
+    for (let i = 0; i < registeredUsers.length; i++) {
+      const user1 = registeredUsers[i];
+      
+      for (let j = i + 1; j < registeredUsers.length; j++) {
+        const user2 = registeredUsers[j];
+        
+        const commonInterests = user1.interests.filter(
+          interest => user2.interests.includes(interest)
+        );
+        
+        const commonCuisines = user1.cuisinePreferences.filter(
+          cuisine => user2.cuisinePreferences.includes(cuisine)
+        );
+        
+        const score = calculateCompatibilityScore(
+          commonInterests.length, 
+          commonCuisines.length
+        );
+        
+        matchScores.push({
+          userId: user1.uid,
+          score,
+          commonInterests,
+          commonCuisines
+        });
+      }
+    }
+
+    // Sort and select best matches
     const matches: Match[] = [];
     const usedUsers = new Set<string>();
 
-    // Sort users by location first
-    const usersByLocation: { [key: string]: UserProfile[] } = {};
-    users.forEach(user => {
-      if (!usersByLocation[user.location]) {
-        usersByLocation[user.location] = [];
-      }
-      usersByLocation[user.location].push(user);
-    });
+    matchScores.sort((a, b) => b.score - a.score);
 
-    // For each location group
-    Object.values(usersByLocation).forEach(locationUsers => {
-      while (locationUsers.length >= 2) {
-        const user1 = locationUsers[0];
-        let bestMatch: MatchScore | null = null;
-        let bestMatchIndex = -1;
+    matchScores.forEach((matchScore, index) => {
+      if (!usedUsers.has(matchScore.userId)) {
+        const bestMatchIndex = matchScores.findIndex(
+          (m, idx) => 
+            idx > index && 
+            m.userId !== matchScore.userId && 
+            !usedUsers.has(m.userId)
+        );
 
-        // Find best match for user1
-        for (let i = 1; i < locationUsers.length; i++) {
-          const user2 = locationUsers[i];
-          if (usedUsers.has(user2.uid)) continue;
-
-          // Calculate common interests and cuisines
-          const commonInterests = user1.interests.filter(interest => 
-            user2.interests.includes(interest)
-          );
-          const commonCuisines = user1.cuisinePreferences.filter(cuisine => 
-            user2.cuisinePreferences.includes(cuisine)
-          );
-
-          // Calculate compatibility score
-          const score = calculateCompatibilityScore(
-            commonInterests.length,
-            commonCuisines.length,
-            user1.priceRange === user2.priceRange ? 1 : 0
-          );
-
-          if (!bestMatch || score > bestMatch.score) {
-            bestMatch = {
-              userId: user2.uid,
-              score,
-              commonInterests,
-              commonCuisines
-            };
-            bestMatchIndex = i;
-          }
-        }
-
-        if (bestMatch && bestMatchIndex !== -1) {
-          // Create match
-          const match = await createMatch(
-            [user1.uid, bestMatch.userId],
+        if (bestMatchIndex !== -1) {
+          const bestMatch = matchScores[bestMatchIndex];
+          
+          const match = createDefaultMatch({
+            users: [matchScore.userId, bestMatch.userId],
             dropId,
-            bestMatch.commonInterests,
-            bestMatch.commonCuisines
-          );
+            commonInterests: bestMatch.commonInterests,
+            commonCuisines: bestMatch.commonCuisines,
+            compatibility: bestMatch.score
+          });
 
           matches.push(match);
-          usedUsers.add(user1.uid);
+          usedUsers.add(matchScore.userId);
           usedUsers.add(bestMatch.userId);
-
-          // Remove matched users from the pool
-          locationUsers.splice(bestMatchIndex, 1);
-          locationUsers.splice(0, 1);
-        } else {
-          // No match found for this user
-          break;
         }
       }
     });
@@ -109,13 +99,12 @@ export const generateMatches = async (dropId: string) => {
     // Update drop with match status
     await updateDoc(doc(db, 'drops', dropId), {
       status: 'matched',
-      matchedAt: Timestamp.now()
     });
 
     return matches;
   } catch (error) {
-    console.error('Error generating matches:', error);
-    throw error;
+    console.error('Error generating drop matches:', error);
+    return [];
   }
 };
 
@@ -166,22 +155,17 @@ const calculateCompatibility = (
 const calculateCompatibilityScore = (
   commonInterestsCount: number,
   commonCuisinesCount: number,
-  priceRangeMatch: number
+  INTEREST_WEIGHT = 0.7,
+  CUISINE_WEIGHT = 0.3,
+  PRICE_WEIGHT = 0
 ): number => {
-  // Weights for different factors
-  const INTEREST_WEIGHT = 0.4;
-  const CUISINE_WEIGHT = 0.4;
-  const PRICE_WEIGHT = 0.2;
+  const interestScore = commonInterestsCount * 10;
+  const cuisineScore = commonCuisinesCount * 10;
+  const priceScore = 0; // Placeholder for future price compatibility
 
-  // Calculate individual scores
-  const interestScore = commonInterestsCount / 3; // Normalized by expecting 3 common interests
-  const cuisineScore = commonCuisinesCount / 2; // Normalized by expecting 2 common cuisines
-  const priceScore = priceRangeMatch;
-
-  // Calculate weighted total score
   return (
-    interestScore * INTEREST_WEIGHT +
-    cuisineScore * CUISINE_WEIGHT +
+    interestScore * INTEREST_WEIGHT + 
+    cuisineScore * CUISINE_WEIGHT + 
     priceScore * PRICE_WEIGHT
   ) * 100; // Convert to percentage
 };

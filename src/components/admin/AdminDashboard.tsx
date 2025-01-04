@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
-import {
-  Box,
-  VStack,
-  Tabs,
-  TabList,
-  TabPanels,
-  Tab,
-  TabPanel,
-  Heading,
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  VStack, 
+  Text, 
+  Heading, 
+  Tabs, 
+  TabList, 
+  TabPanels, 
+  Tab, 
+  TabPanel, 
+  Spinner,
+  Flex,
   Button,
   Table,
   Thead,
@@ -16,145 +19,198 @@ import {
   Th,
   Td,
   Badge,
-  useToast,
-  Text,
+  useToast
 } from '@chakra-ui/react';
-import { collection, query, getDocs, where, orderBy } from 'firebase/firestore';
+import { Timestamp, collection, query, getDocs, where, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { Drop, Match } from '../../types';
+import { generateDropMatches } from '../../services/matchingService';
+import { Drop, Match, UserProfile } from '../../types';
+import { useAuth } from '../../contexts/AuthContext';
 import AdminDrops from './AdminDrops';
-import { generateMatches } from '../../services/matchingService';
-import { format } from 'date-fns';
 
 export default function AdminDashboard() {
   const [drops, setDrops] = useState<Drop[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(false);
+  const { user } = useAuth();
   const toast = useToast();
 
-  // Fetch drops and matches
-  const fetchData = async () => {
-    try {
-      // Fetch drops
-      const dropsQuery = query(
-        collection(db, 'drops'),
-        orderBy('startTime', 'desc')
-      );
-      const dropDocs = await getDocs(dropsQuery);
-      const dropsData = dropDocs.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Drop[];
-      setDrops(dropsData);
-
-      // Fetch matches
-      const matchesQuery = query(collection(db, 'matches'));
-      const matchDocs = await getDocs(matchesQuery);
-      const matchesData = matchDocs.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Match[];
-      setMatches(matchesData);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast({
-        title: 'Error fetching data',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
   useEffect(() => {
-    fetchData();
+    const fetchDrops = async () => {
+      try {
+        const dropsRef = collection(db, 'drops');
+        const q = query(dropsRef, orderBy('startTime', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        const fetchedDrops: Drop[] = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data()
+        } as Drop));
+        
+        setDrops(fetchedDrops);
+      } catch (error) {
+        console.error('Error fetching drops:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch drops',
+          status: 'error',
+          duration: 3000,
+          isClosable: true
+        });
+      }
+    };
+
+    const fetchMatches = async () => {
+      try {
+        const matchesRef = collection(db, 'matches');
+        const q = query(matchesRef, orderBy('createdAt', 'desc'));
+        const querySnapshot = await getDocs(q);
+        
+        const fetchedMatches: Match[] = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data()
+        } as Match));
+        
+        setMatches(fetchedMatches);
+      } catch (error) {
+        console.error('Error fetching matches:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch matches',
+          status: 'error',
+          duration: 3000,
+          isClosable: true
+        });
+      }
+    };
+
+    fetchDrops();
+    fetchMatches();
   }, []);
 
-  // Generate matches for a drop
   const handleGenerateMatches = async (dropId: string) => {
     setLoading(true);
     try {
-      await generateMatches(dropId);
+      await generateDropMatches(dropId);
       toast({
         title: 'Matches generated successfully',
         status: 'success',
         duration: 3000,
-        isClosable: true,
+        isClosable: true
       });
-      fetchData(); // Refresh data
     } catch (error) {
       console.error('Error generating matches:', error);
       toast({
-        title: 'Error generating matches',
+        title: 'Error',
+        description: 'Failed to generate matches',
         status: 'error',
         duration: 3000,
-        isClosable: true,
+        isClosable: true
       });
     } finally {
       setLoading(false);
     }
   };
 
+  if (!user || !user.isAdmin) {
+    return (
+      <Box p={6} textAlign="center">
+        <Text>Access Denied. Admin privileges required.</Text>
+      </Box>
+    );
+  }
+
   return (
-    <Box p={8}>
-      <Heading mb={6}>Admin Dashboard</Heading>
-      
-      <Tabs>
+    <Box p={6}>
+      <Tabs variant="enclosed">
         <TabList>
+          <Tab>Drops</Tab>
+          <Tab>Matches</Tab>
           <Tab>Create Drop</Tab>
-          <Tab>Manage Drops</Tab>
-          <Tab>View Matches</Tab>
         </TabList>
 
         <TabPanels>
           <TabPanel>
-            <AdminDrops onDropCreated={fetchData} />
+            <VStack spacing={4} align="stretch">
+              <Heading size="md">Upcoming Drops</Heading>
+              {loading ? (
+                <Flex justify="center" align="center" height="200px">
+                  <Spinner />
+                </Flex>
+              ) : (
+                <Table variant="simple">
+                  <Thead>
+                    <Tr>
+                      <Th>Title</Th>
+                      <Th>Start Time</Th>
+                      <Th>Location</Th>
+                      <Th>Status</Th>
+                      <Th>Actions</Th>
+                    </Tr>
+                  </Thead>
+                  <Tbody>
+                    {drops.map((drop) => (
+                      <Tr key={drop.id}>
+                        <Td>{drop.title}</Td>
+                        <Td>{drop.startTime.toDate().toLocaleString()}</Td>
+                        <Td>{drop.location}</Td>
+                        <Td>
+                          <Badge 
+                            colorScheme={
+                              drop.status === 'upcoming' ? 'green' : 
+                              drop.status === 'matched' ? 'blue' : 'red'
+                            }
+                          >
+                            {drop.status}
+                          </Badge>
+                        </Td>
+                        <Td>
+                          {drop.status === 'upcoming' && (
+                            <Button 
+                              size="sm" 
+                              colorScheme="blue" 
+                              onClick={() => handleGenerateMatches(drop.id)}
+                              isLoading={loading}
+                            >
+                              Generate Matches
+                            </Button>
+                          )}
+                        </Td>
+                      </Tr>
+                    ))}
+                  </Tbody>
+                </Table>
+              )}
+            </VStack>
           </TabPanel>
 
           <TabPanel>
-            <VStack align="stretch" spacing={4}>
-              <Heading size="md" mb={4}>Manage Drops</Heading>
-              
+            <VStack spacing={4} align="stretch">
+              <Heading size="md">Recent Matches</Heading>
               <Table variant="simple">
                 <Thead>
                   <Tr>
-                    <Th>Title</Th>
-                    <Th>Start Time</Th>
-                    <Th>Location</Th>
-                    <Th>Participants</Th>
+                    <Th>Drop</Th>
+                    <Th>Users</Th>
+                    <Th>Compatibility</Th>
                     <Th>Status</Th>
-                    <Th>Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
-                  {drops.map(drop => (
-                    <Tr key={drop.id}>
-                      <Td>{drop.title}</Td>
-                      <Td>{format(drop.startTime.toDate(), 'PPp')}</Td>
-                      <Td>{drop.location}</Td>
-                      <Td>{drop.currentParticipants}/{drop.maxParticipants}</Td>
+                  {matches.map((match) => (
+                    <Tr key={match.id}>
+                      <Td>{match.dropId}</Td>
+                      <Td>{match.users.join(', ')}</Td>
+                      <Td>{match.compatibilityScore}%</Td>
                       <Td>
-                        <Badge
+                        <Badge 
                           colorScheme={
-                            drop.status === 'upcoming'
-                              ? 'blue'
-                              : drop.status === 'matched'
-                              ? 'green'
-                              : 'gray'
+                            match.status === 'pending' ? 'yellow' : 
+                            match.status === 'confirmed' ? 'green' : 'red'
                           }
                         >
-                          {drop.status}
+                          {match.status}
                         </Badge>
-                      </Td>
-                      <Td>
-                        <Button
-                          size="sm"
-                          colorScheme="blue"
-                          isDisabled={drop.status !== 'upcoming' || loading}
-                          onClick={() => handleGenerateMatches(drop.id)}
-                        >
-                          Generate Matches
-                        </Button>
                       </Td>
                     </Tr>
                   ))}
@@ -164,55 +220,7 @@ export default function AdminDashboard() {
           </TabPanel>
 
           <TabPanel>
-            <VStack align="stretch" spacing={4}>
-              <Heading size="md" mb={4}>View Matches</Heading>
-              
-              <Table variant="simple">
-                <Thead>
-                  <Tr>
-                    <Th>Drop</Th>
-                    <Th>Users</Th>
-                    <Th>Common Interests</Th>
-                    <Th>Common Cuisines</Th>
-                    <Th>Score</Th>
-                    <Th>Status</Th>
-                  </Tr>
-                </Thead>
-                <Tbody>
-                  {matches.map(match => {
-                    const drop = drops.find(d => d.id === match.dropId);
-                    return (
-                      <Tr key={match.id}>
-                        <Td>{drop?.title || match.dropId}</Td>
-                        <Td>
-                          <Text fontSize="sm">{match.users.join(', ')}</Text>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm">{match.commonInterests.join(', ')}</Text>
-                        </Td>
-                        <Td>
-                          <Text fontSize="sm">{match.commonCuisines.join(', ')}</Text>
-                        </Td>
-                        <Td>{match.compatibilityScore.toFixed(1)}%</Td>
-                        <Td>
-                          <Badge
-                            colorScheme={
-                              match.status === 'pending'
-                                ? 'yellow'
-                                : match.status === 'confirmed'
-                                ? 'green'
-                                : 'red'
-                            }
-                          >
-                            {match.status}
-                          </Badge>
-                        </Td>
-                      </Tr>
-                    );
-                  })}
-                </Tbody>
-              </Table>
-            </VStack>
+            <AdminDrops />
           </TabPanel>
         </TabPanels>
       </Tabs>

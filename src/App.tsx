@@ -3,15 +3,16 @@ import { Box, Button, Flex, Spinner, Center, useToast, Text } from '@chakra-ui/r
 import './App.css'
 import { app, db, auth } from './firebase'
 import { signOut } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { doc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
 import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import ProfileCreation from './components/ProfileCreation'
-import { UserProfile } from './types'
+import { UserProfile, Drop } from './types'
 
 function App() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [drops, setDrops] = useState<Drop[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const toast = useToast()
@@ -31,6 +32,33 @@ function App() {
     }
   };
 
+  const fetchUpcomingDrops = async () => {
+    try {
+      const dropsRef = collection(db, 'drops');
+      const q = query(
+        dropsRef, 
+        orderBy('startTime', 'asc'), 
+        limit(5)
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const upcomingDrops = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+      
+      setDrops(upcomingDrops);
+    } catch (err) {
+      console.error('Error fetching drops:', err);
+      toast({
+        title: 'Error fetching drops',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       try {
@@ -41,6 +69,7 @@ function App() {
           if (!hasProfile) {
             console.log('No profile found for user');
           }
+          await fetchUpcomingDrops();
         } else {
           console.log('No user authenticated');
           setUser(null);
@@ -99,47 +128,30 @@ function App() {
       <Center h="100vh">
         <Box textAlign="center">
           <Text color="red.500" fontSize="xl" mb={4}>{error}</Text>
-          <Button onClick={() => window.location.reload()}>
-            Retry
-          </Button>
+          <Button onClick={() => setError(null)}>Try Again</Button>
         </Box>
       </Center>
     );
   }
 
+  // If no user, show Auth page
+  if (!user) {
+    return <Auth />;
+  }
+
+  // If no profile, show profile creation
+  if (!profile) {
+    return <ProfileCreation user={user} onComplete={handleProfileComplete} />;
+  }
+
+  // If authenticated and has profile, show HomePage
   return (
-    <div className="app-container">
-      <header className="app-header">
-        <Flex justify="space-between" align="center" maxW="1200px" mx="auto" px={4}>
-          <h1>Nectr</h1>
-          {user && (
-            <Button
-              onClick={handleSignOut}
-              colorScheme="blue"
-              variant="outline"
-              size="sm"
-            >
-              Sign Out
-            </Button>
-          )}
-        </Flex>
-      </header>
-      
-      <main className="main-content">
-        {!user ? (
-          <div className="auth-section">
-            <Auth />
-          </div>
-        ) : !profile ? (
-          <div className="profile-section">
-            <ProfileCreation user={user} onComplete={handleProfileComplete} />
-          </div>
-        ) : (
-          <HomePage user={profile} />
-        )}
-      </main>
-    </div>
+    <HomePage 
+      user={profile} 
+      drops={drops} 
+      onSignOut={handleSignOut}
+    />
   );
 }
 
-export default App
+export default App;

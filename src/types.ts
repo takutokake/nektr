@@ -67,6 +67,7 @@ export interface UserProfile {
   progress: number;
   connections: number;
   completedChallenges: string[];
+  registeredDrops?: string[];
 }
 
 export interface DropRegistration {
@@ -110,4 +111,22 @@ export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => 
     location: 'TBD',
     time: Timestamp.now(),
   },
+});
+
+export const createDefaultUserProfile = (partialUser: Partial<UserProfile> = {}): UserProfile => ({
+  uid: partialUser.uid || '',
+  displayName: partialUser.displayName || 'New User',
+  email: partialUser.email || '',
+  photoURL: partialUser.photoURL || '',
+  interests: partialUser.interests || [],
+  cuisinePreferences: partialUser.cuisinePreferences || [],
+  location: partialUser.location || '',
+  priceRange: partialUser.priceRange || '$',
+  isAdmin: partialUser.isAdmin || false,
+  streak: partialUser.streak || 0,
+  totalMatches: partialUser.totalMatches || 0,
+  progress: partialUser.progress || 0,
+  connections: partialUser.connections || 0,
+  completedChallenges: partialUser.completedChallenges || [],
+  registeredDrops: partialUser.registeredDrops || [],
 });
