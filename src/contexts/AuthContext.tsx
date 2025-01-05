@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -26,6 +26,35 @@ const AuthContext = createContext<AuthContextType>({
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const userProfileFetchedRef = useRef<boolean>(false);
+
+  const fetchUserProfile = async (firebaseUser: FirebaseUser): Promise<UserProfile | null> => {
+    try {
+      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+      if (userDoc.exists()) {
+        return userDoc.data() as UserProfile;
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+    return null;
+  };
+
+  const createUserProfile = async (
+    firebaseUser: FirebaseUser, 
+    email: string = '', 
+    additionalInfo: Partial<UserProfile> = {}
+  ): Promise<UserProfile> => {
+    const userProfile = createDefaultUserProfile({
+      uid: firebaseUser.uid,
+      email: firebaseUser.email || email,
+      displayName: additionalInfo.displayName || firebaseUser.email?.split('@')[0] || 'New User',
+      ...additionalInfo
+    });
+
+    await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
+    return userProfile;
+  };
 
   const signup = async (
     email: string, 
@@ -33,21 +62,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     additionalInfo: Partial<UserProfile> = {}
   ) => {
     try {
-      // Create user in Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
-
-      // Create user profile in Firestore
-      const userProfile: UserProfile = createDefaultUserProfile({
-        uid: firebaseUser.uid,
-        email: firebaseUser.email || email,
-        displayName: additionalInfo.displayName || firebaseUser.email?.split('@')[0] || 'New User',
-        ...additionalInfo
-      });
-
-      // Save user profile to Firestore
-      await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
-
+      const userProfile = await createUserProfile(firebaseUser, email, additionalInfo);
       setUser(userProfile);
     } catch (error) {
       console.error('Signup error:', error);
@@ -58,24 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      // Fetch user profile from Firestore
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      
-      if (userDoc.exists()) {
-        setUser(userDoc.data() as UserProfile);
-      } else {
-        // Create profile if it doesn't exist
-        const userProfile: UserProfile = createDefaultUserProfile({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email || email,
-          displayName: firebaseUser.displayName || email.split('@')[0] || 'New User'
-        });
-
-        await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
-        setUser(userProfile);
-      }
+      // Don't fetch profile here, let the auth state listener handle it
     } catch (error) {
       console.error('Login error:', error);
       throw error;
@@ -86,6 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await signOut(auth);
       setUser(null);
+      userProfileFetchedRef.current = false;
     } catch (error) {
       console.error('Logout error:', error);
       throw error;
@@ -94,28 +95,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
+      if (firebaseUser && !userProfileFetchedRef.current) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          
-          if (userDoc.exists()) {
-            setUser(userDoc.data() as UserProfile);
-          } else {
-            // Create profile if it doesn't exist
-            const userProfile: UserProfile = createDefaultUserProfile({
-              uid: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'New User'
-            });
-
-            await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
-            setUser(userProfile);
+          let profile = await fetchUserProfile(firebaseUser);
+          if (!profile) {
+            profile = await createUserProfile(firebaseUser);
           }
+          setUser(profile);
+          userProfileFetchedRef.current = true;
         } catch (error) {
-          console.error('Error fetching user profile:', error);
+          console.error('Error in auth state change:', error);
         }
-      } else {
+      } else if (!firebaseUser) {
         setUser(null);
+        userProfileFetchedRef.current = false;
       }
     });
 
