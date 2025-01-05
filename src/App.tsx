@@ -3,11 +3,12 @@ import { Box, Button, Flex, Spinner, Center, useToast, Text } from '@chakra-ui/r
 import './App.css'
 import { app, db, auth } from './firebase'
 import { signOut } from 'firebase/auth'
-import { doc, getDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore'
+import { doc, getDoc } from 'firebase/firestore'
 import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import ProfileCreation from './components/ProfileCreation'
 import { UserProfile, Drop } from './types'
+import { dropsCache } from './services/dropsService'
 
 function App() {
   const [user, setUser] = useState<any>(null)
@@ -32,30 +33,13 @@ function App() {
     }
   };
 
-  const fetchUpcomingDrops = async () => {
+  const fetchUpcomingDrops = async (userId: string) => {
     try {
-      const dropsRef = collection(db, 'drops');
-      const q = query(
-        dropsRef, 
-        orderBy('startTime', 'asc'), 
-        limit(5)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const upcomingDrops = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Drop));
-      
+      const upcomingDrops = await dropsCache.getUpcomingDrops(userId);
       setDrops(upcomingDrops);
     } catch (err) {
       console.error('Error fetching drops:', err);
-      toast({
-        title: 'Error fetching drops',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
+      // Don't show error toast here since DropsSection will handle it
     }
   };
 
@@ -69,11 +53,12 @@ function App() {
           if (!hasProfile) {
             console.log('No profile found for user');
           }
-          await fetchUpcomingDrops();
+          await fetchUpcomingDrops(user.uid);
         } else {
           console.log('No user authenticated');
           setUser(null);
           setProfile(null);
+          setDrops([]);
         }
       } catch (err) {
         console.error('Auth error:', err);
@@ -98,6 +83,8 @@ function App() {
       setUser(null);
       setProfile(null);
       setError(null);
+      setDrops([]);
+      dropsCache.clearAllCache(); // Clear the drops cache on logout
       toast({
         title: 'Signed out successfully',
         status: 'success',

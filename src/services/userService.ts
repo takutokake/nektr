@@ -7,6 +7,12 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 import { UserProfile } from '../types';
 
+// Add local cache for user profiles
+const userProfileCache = new Map<string, {
+  data: UserProfile;
+  timestamp: number;
+}>();
+
 export const updateUserProfile = async (
   uid: string, 
   updates: Partial<UserProfile>
@@ -14,6 +20,7 @@ export const updateUserProfile = async (
   try {
     const userRef = doc(db, 'users', uid);
     await updateDoc(userRef, updates);
+    userProfileCache.delete(uid); // Clear cache after update
   } catch (error) {
     console.error('Error updating user profile:', error);
     throw error;
@@ -46,11 +53,20 @@ export const uploadProfilePicture = async (
 
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
+    // Check cache validity (5 minutes)
+    const cached = userProfileCache.get(uid);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < 5 * 60 * 1000) {
+      return cached.data;
+    }
+
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
     
     if (userSnap.exists()) {
-      return userSnap.data() as UserProfile;
+      const profile = userSnap.data() as UserProfile;
+      userProfileCache.set(uid, { data: profile, timestamp: now });
+      return profile;
     }
     
     return null;
