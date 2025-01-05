@@ -18,29 +18,16 @@ import {
   useToast,
   Avatar,
   Text,
-  Box
+  Box,
+  Wrap,
+  WrapItem,
+  Tag,
+  TagLabel,
+  TagCloseButton
 } from '@chakra-ui/react';
 import { useAuth } from '../contexts/AuthContext';
 import { updateUserProfile } from '../services/userService';
 import { UserProfile } from '../types';
-
-interface ProfileModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  initialData?: UserProfile;
-}
-
-const INTERESTS = [
-  'Technology', 'Food', 'Sports', 'Music', 'Travel', 
-  'Art', 'Gaming', 'Fitness', 'Movies', 'Reading'
-];
-
-const CUISINES = [
-  'Italian', 'Japanese', 'Mexican', 'Chinese', 'Indian', 
-  'Thai', 'Mediterranean', 'American', 'Korean', 'French'
-];
-
-const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 
 interface LocationOption {
   value: string;
@@ -61,11 +48,23 @@ const LOCATIONS: LocationOption[] = [
   },
 ];
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  initialData 
-}) => {
+const INTERESTS = [
+  'Technology', 'Arts', 'Sports', 'Music', 'Travel', 
+  'Food', 'Photography', 'Gaming', 'Fitness', 'Movies'
+];
+
+const CUISINES = [
+  'Italian', 'Japanese', 'Mexican', 'Chinese', 'Indian', 
+  'Thai', 'Mediterranean', 'American', 'Korean', 'French'
+];
+
+const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
+
+const ProfileModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  initialData?: UserProfile;
+}> = ({ isOpen, onClose, initialData }) => {
   const { user } = useAuth();
   const toast = useToast();
 
@@ -80,7 +79,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
   });
 
   useEffect(() => {
-    // Update profileData if initialData changes
     if (initialData) {
       setProfileData({
         displayName: initialData.displayName || user?.displayName || '',
@@ -182,7 +180,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </HStack>
 
             <FormControl>
-              <FormLabel>Display Name</FormLabel>
+              <FormLabel fontWeight="bold" fontSize="lg">Display Name</FormLabel>
               <Input 
                 name="displayName"
                 value={profileData.displayName}
@@ -192,7 +190,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </FormControl>
 
             <FormControl>
-              <FormLabel>Location</FormLabel>
+              <FormLabel fontWeight="bold" fontSize="lg">Location</FormLabel>
               <Select 
                 name="location"
                 value={profileData.location}
@@ -213,7 +211,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </FormControl>
 
             <FormControl>
-              <FormLabel>Price Range Preference</FormLabel>
+              <FormLabel fontWeight="bold" fontSize="lg">Price Range Preference</FormLabel>
               <Select 
                 name="priceRange"
                 value={profileData.priceRange}
@@ -227,33 +225,61 @@ const ProfileModal: React.FC<ProfileModalProps> = ({
             </FormControl>
 
             <FormControl>
-              <FormLabel>Interests</FormLabel>
-              <HStack flexWrap="wrap">
+              <FormLabel fontWeight="bold" fontSize="lg">Interests</FormLabel>
+              <Wrap spacing={2}>
                 {INTERESTS.map(interest => (
-                  <Checkbox
-                    key={interest}
-                    isChecked={profileData.interests?.includes(interest)}
-                    onChange={() => handleInterestToggle(interest)}
-                  >
-                    {interest}
-                  </Checkbox>
+                  <WrapItem key={interest}>
+                    <Tag
+                      size="lg"
+                      bg={profileData.interests?.includes(interest) ? '#FDAA25' : '#FFF5E6'}
+                      color={profileData.interests?.includes(interest) ? 'white' : '#FDAA25'}
+                      borderColor={profileData.interests?.includes(interest) ? '#FDAA25' : 'transparent'}
+                      borderWidth="1px"
+                      onClick={() => handleInterestToggle(interest)}
+                      cursor="pointer"
+                      fontFamily="Poppins"
+                      fontWeight={600}
+                    >
+                      <TagLabel>{interest}</TagLabel>
+                      {profileData.interests?.includes(interest) && (
+                        <TagCloseButton onClick={(e) => {
+                          e.stopPropagation();
+                          handleInterestToggle(interest);
+                        }} />
+                      )}
+                    </Tag>
+                  </WrapItem>
                 ))}
-              </HStack>
+              </Wrap>
             </FormControl>
 
             <FormControl>
-              <FormLabel>Cuisine Preferences</FormLabel>
-              <HStack flexWrap="wrap">
+              <FormLabel fontWeight="bold" fontSize="lg">Cuisine Preferences</FormLabel>
+              <Wrap spacing={2}>
                 {CUISINES.map(cuisine => (
-                  <Checkbox
-                    key={cuisine}
-                    isChecked={profileData.cuisinePreferences?.includes(cuisine)}
-                    onChange={() => handleCuisineToggle(cuisine)}
-                  >
-                    {cuisine}
-                  </Checkbox>
+                  <WrapItem key={cuisine}>
+                    <Tag
+                      size="lg"
+                      bg={profileData.cuisinePreferences?.includes(cuisine) ? '#FDAA25' : '#FFF5E6'}
+                      color={profileData.cuisinePreferences?.includes(cuisine) ? 'white' : '#FDAA25'}
+                      borderColor={profileData.cuisinePreferences?.includes(cuisine) ? '#FDAA25' : 'transparent'}
+                      borderWidth="1px"
+                      onClick={() => handleCuisineToggle(cuisine)}
+                      cursor="pointer"
+                      fontFamily="Poppins"
+                      fontWeight={600}
+                    >
+                      <TagLabel>{cuisine}</TagLabel>
+                      {profileData.cuisinePreferences?.includes(cuisine) && (
+                        <TagCloseButton onClick={(e) => {
+                          e.stopPropagation();
+                          handleCuisineToggle(cuisine);
+                        }} />
+                      )}
+                    </Tag>
+                  </WrapItem>
                 ))}
-              </HStack>
+              </Wrap>
             </FormControl>
           </VStack>
         </ModalBody>
