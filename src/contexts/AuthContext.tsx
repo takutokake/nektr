@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -12,121 +12,116 @@ import { UserProfile, createDefaultUserProfile } from '../types';
 
 interface AuthContextType {
   user: UserProfile | null;
-  signup: (email: string, password: string, additionalInfo?: Partial<UserProfile>) => Promise<void>;
+  loading: boolean;
+  error: string | null;
+  signup: (email: string, password: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType>({
-  user: null,
-  signup: async () => {},
-  login: async () => {},
-  logout: async () => {},
-});
+const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const userProfileFetchedRef = useRef<boolean>(false);
-  const authStateChangedRef = useRef<boolean>(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchOrCreateUserProfile = async (
-    firebaseUser: FirebaseUser, 
-    email: string = '', 
-    additionalInfo: Partial<UserProfile> = {}
-  ): Promise<UserProfile> => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-      if (userDoc.exists()) {
-        return userDoc.data() as UserProfile;
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
+  const fetchUserProfile = async (firebaseUser: FirebaseUser): Promise<UserProfile> => {
+    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+    if (userDoc.exists()) {
+      return userDoc.data() as UserProfile;
     }
 
     const userProfile = createDefaultUserProfile({
       uid: firebaseUser.uid,
-      email: firebaseUser.email || email,
-      displayName: additionalInfo.displayName || firebaseUser.email?.split('@')[0] || 'New User',
-      ...additionalInfo
+      email: firebaseUser.email || '',
+      displayName: firebaseUser.email?.split('@')[0] || 'New User',
     });
 
     await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
     return userProfile;
   };
 
-  const signup = async (
-    email: string, 
-    password: string, 
-    additionalInfo: Partial<UserProfile> = {}
-  ) => {
+  const signup = async (email: string, password: string) => {
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      const userProfile = await fetchOrCreateUserProfile(firebaseUser, email, additionalInfo);
+      setLoading(true);
+      setError(null);
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      const userProfile = await fetchUserProfile(result.user);
       setUser(userProfile);
-      userProfileFetchedRef.current = true;
-    } catch (error) {
-      console.error('Signup error:', error);
-      throw error;
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   const login = async (email: string, password: string) => {
     try {
+      setLoading(true);
+      setError(null);
       await signInWithEmailAndPassword(auth, email, password);
-      // Don't fetch profile here, let the auth state listener handle it
-    } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   const logout = async () => {
     try {
+      setLoading(true);
+      setError(null);
       await signOut(auth);
       setUser(null);
-      userProfileFetchedRef.current = false;
-      authStateChangedRef.current = false;
-    } catch (error) {
-      console.error('Logout error:', error);
-      throw error;
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
+    console.log('AuthProvider mounted');
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser && !userProfileFetchedRef.current) {
-        try {
-          authStateChangedRef.current = true;
-          const userProfile = await fetchOrCreateUserProfile(firebaseUser);
+      console.log('Auth state changed:', firebaseUser?.email);
+      try {
+        setLoading(true);
+        if (firebaseUser) {
+          const userProfile = await fetchUserProfile(firebaseUser);
           setUser(userProfile);
-          userProfileFetchedRef.current = true;
-        } catch (error) {
-          console.error('Error in auth state change:', error);
+        } else {
+          setUser(null);
         }
-      } else if (!firebaseUser) {
-        setUser(null);
-        userProfileFetchedRef.current = false;
-        authStateChangedRef.current = false;
+      } catch (err: any) {
+        console.error('Auth state change error:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
       }
     });
 
-    return () => {
-      unsubscribe();
-      authStateChangedRef.current = false;
-    };
+    return () => unsubscribe();
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ user, signup, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    user,
+    loading,
+    error,
+    signup,
+    login,
+    logout,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

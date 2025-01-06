@@ -61,6 +61,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const toast = useToast();
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
@@ -89,18 +90,25 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      onAuthSuccess(userCredential.user);
+    if (!email || !password) {
       toast({
-        title: 'Signed In',
-        description: "You've successfully logged in!",
-        status: 'success',
+        title: 'Error',
+        description: 'Please fill in all fields',
+        status: 'error',
         duration: 3000,
         isClosable: true,
       });
-    } catch (e: unknown) {
-      const error = e as AuthError;
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      console.log('Attempting login with email');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      onAuthSuccess(userCredential.user);
+      console.log('Login successful');
+    } catch (error: any) {
+      console.error('Login error:', error);
       toast({
         title: 'Sign In Error',
         description: error.message || 'Failed to sign in',
@@ -108,6 +116,8 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
         duration: 3000,
         isClosable: true,
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -150,75 +160,121 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
   return (
     <ChakraProvider theme={theme}>
       <Flex 
-        height="100vh" 
+        minHeight="100vh" 
         alignItems="center" 
         justifyContent="center" 
-        bg="gray.50"
+        bg="white" 
+        p={[4, 6, 8]}
       >
         <Box 
           bg="white" 
-          p={8} 
-          borderRadius="xl" 
+          p={[8, 10, 12]} 
+          borderRadius="2xl" 
           boxShadow="lg"
-          width="100%"
-          maxWidth="400px"
+          width={["90%", "80%", "auto"]} 
+          minWidth={["auto", "auto", "500px"]} 
+          maxWidth="600px"
         >
-          <VStack spacing={6} align="stretch">
+          <VStack spacing={8} align="stretch">
             <Heading 
               textAlign="center" 
-              color="brand.500" 
-              mb={4}
+              color="#FDAA25" 
+              fontSize={["2xl", "3xl"]} 
+              fontWeight="600"
             >
               {isLogin ? 'Sign In' : 'Sign Up'}
             </Heading>
 
             <form onSubmit={isLogin ? handleEmailSignIn : handleEmailSignUp}>
-              <VStack spacing={4}>
+              <VStack spacing={6}>
                 <FormControl isRequired>
-                  <FormLabel>Email</FormLabel>
+                  <FormLabel color="gray.700">Email</FormLabel>
                   <Input 
                     type="email" 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
+                    size="lg"
+                    height="56px" 
+                    bg="gray.50"
+                    borderColor="gray.200"
+                    borderRadius="md"
+                    _placeholder={{ color: 'gray.400' }}
+                    _hover={{
+                      borderColor: "#FDAA25"
+                    }}
+                    _focus={{
+                      borderColor: "#FDAA25",
+                      boxShadow: "0 0 0 1px #FDAA25"
+                    }}
                   />
                 </FormControl>
 
                 <FormControl isRequired>
-                  <FormLabel>Password</FormLabel>
+                  <FormLabel color="gray.700">Password</FormLabel>
                   <Input 
                     type="password" 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter your password"
+                    size="lg"
+                    height="56px" 
+                    bg="gray.50"
+                    borderColor="gray.200"
+                    borderRadius="md"
+                    _placeholder={{ color: 'gray.400' }}
+                    _hover={{
+                      borderColor: "#FDAA25"
+                    }}
+                    _focus={{
+                      borderColor: "#FDAA25",
+                      boxShadow: "0 0 0 1px #FDAA25"
+                    }}
                   />
                 </FormControl>
 
                 <Button 
-                  colorScheme="brand" 
+                  bg="#FDAA25"
+                  color="white"
                   type="submit" 
                   width="full" 
                   mt={4}
+                  height="56px" 
+                  fontSize="lg"
+                  fontWeight="600"
+                  isLoading={isLoading}
+                  _hover={{
+                    bg: "#E69422"
+                  }}
+                  borderRadius="md"
                 >
                   {isLogin ? 'Sign In' : 'Sign Up'}
                 </Button>
               </VStack>
             </form>
 
-            <Divider my={4} />
+            <Divider borderColor="gray.200" />
 
             <Button 
-              colorScheme="red" 
               variant="outline" 
               width="full"
+              height="56px" 
+              fontSize="lg"
               onClick={handleGoogleSignIn}
+              borderColor="gray.300"
+              color="gray.700"
               leftIcon={
                 <img 
                   src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" 
                   alt="Google logo" 
-                  style={{ width: '20px', height: '20px', marginRight: '8px' }} 
+                  style={{ width: '24px', height: '24px' }} 
                 />
               }
+              _hover={{
+                bg: "gray.50",
+                borderColor: "gray.400"
+              }}
+              borderRadius="md"
             >
               Sign in with Google
             </Button>
@@ -226,8 +282,12 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
             <Text 
               textAlign="center" 
               color="gray.600" 
+              fontSize="md"
               cursor="pointer"
               onClick={() => setIsLogin(!isLogin)}
+              _hover={{
+                color: "#FDAA25"
+              }}
             >
               {isLogin 
                 ? "Don't have an account? Sign Up" 

@@ -1,92 +1,55 @@
 import { useState, useEffect } from 'react'
-import { Box, Button, Flex, Spinner, Center, useToast, Text } from '@chakra-ui/react'
+import { Box, Spinner, Center, useToast } from '@chakra-ui/react'
 import './App.css'
-import { app, db, auth } from './firebase'
-import { signOut } from 'firebase/auth'
-import { doc, getDoc } from 'firebase/firestore'
+import { useAuth } from './contexts/AuthContext'
 import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import ProfileCreation from './components/ProfileCreation'
-import { UserProfile, Drop } from './types'
+import { Drop } from './types'
 import { dropsCache } from './services/dropsService'
+import { auth } from './firebase'
 
 function App() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [drops, setDrops] = useState<Drop[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const toast = useToast()
-
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const userRef = doc(db, 'users', userId);
-      const profileDoc = await getDoc(userRef);
-      if (profileDoc.exists()) {
-        setProfile(profileDoc.data() as UserProfile);
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      return false;
-    }
-  };
-
-  const fetchUpcomingDrops = async (userId: string) => {
-    try {
-      const upcomingDrops = await dropsCache.getUpcomingDrops(userId);
-      setDrops(upcomingDrops);
-    } catch (err) {
-      console.error('Error fetching drops:', err);
-      // Don't show error toast here since DropsSection will handle it
-    }
-  };
+  console.log('App rendering');
+  const { user, loading, error, logout } = useAuth();
+  const [drops, setDrops] = useState<Drop[]>([]);
+  const [dropsLoading, setDropsLoading] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    const fetchDrops = async () => {
+      if (!user?.uid) return;
+      
       try {
-        if (user) {
-          console.log('User authenticated:', user.uid);
-          setUser(user);
-          const hasProfile = await fetchUserProfile(user.uid);
-          if (!hasProfile) {
-            console.log('No profile found for user');
-          }
-          await fetchUpcomingDrops(user.uid);
-        } else {
-          console.log('No user authenticated');
-          setUser(null);
-          setProfile(null);
-          setDrops([]);
-        }
+        setDropsLoading(true);
+        const upcomingDrops = await dropsCache.getUpcomingDrops(user.uid);
+        setDrops(upcomingDrops);
       } catch (err) {
-        console.error('Auth error:', err);
-        setError('Authentication error');
+        console.error('Error fetching drops:', err);
+        toast({
+          title: 'Error',
+          description: 'Failed to load upcoming drops',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
       } finally {
-        setLoading(false);
+        setDropsLoading(false);
       }
-    });
+    };
 
-    return () => unsubscribe();
-  }, []);
-
-  const handleProfileComplete = async () => {
     if (user) {
-      await fetchUserProfile(user.uid);
+      fetchDrops();
     }
-  };
+  }, [user?.uid, toast]);
 
   const handleSignOut = async () => {
     try {
-      await signOut(auth);
-      setUser(null);
-      setProfile(null);
-      setError(null);
-      setDrops([]);
-      dropsCache.clearAllCache(); // Clear the drops cache on logout
+      await logout();
+      dropsCache.clearAllCache();
       toast({
-        title: 'Signed out successfully',
+        title: 'Success',
+        description: 'You have been signed out successfully',
         status: 'success',
         duration: 3000,
         isClosable: true,
@@ -94,7 +57,8 @@ function App() {
     } catch (err) {
       console.error('Sign out error:', err);
       toast({
-        title: 'Error signing out',
+        title: 'Error',
+        description: 'Failed to sign out',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -102,42 +66,63 @@ function App() {
     }
   };
 
+  // Show loading spinner while authentication is being checked
   if (loading) {
+    console.log('Auth loading...');
     return (
       <Center h="100vh">
-        <Spinner size="xl" />
+        <Spinner size="xl" color="pink.500" thickness="4px" />
       </Center>
     );
   }
 
+  // Show error toast if there's an error
   if (error) {
+    console.log('Auth error:', error);
+    toast({
+      title: 'Error',
+      description: error,
+      status: 'error',
+      duration: 5000,
+      isClosable: true,
+    });
+  }
+
+  // Show auth screen if no user
+  if (!user) {
+    console.log('No user, showing auth screen');
     return (
-      <Center h="100vh">
-        <Box textAlign="center">
-          <Text color="red.500" fontSize="xl" mb={4}>{error}</Text>
-          <Button onClick={() => setError(null)}>Try Again</Button>
-        </Box>
-      </Center>
+      <Box minH="100vh" display="flex" alignItems="center" justifyContent="center">
+        <Auth />
+      </Box>
     );
   }
 
-  // If no user, show Auth page
-  if (!user) {
-    return <Auth />;
+  // Check if user has completed their profile
+  const isProfileComplete = Boolean(
+    user.displayName && 
+    user.location && 
+    user.priceRange && 
+    user.interests?.length > 0 && 
+    user.cuisinePreferences?.length > 0
+  );
+
+  // Show profile creation if profile is not complete
+  if (!isProfileComplete && auth.currentUser) {
+    console.log('Profile incomplete, showing creation screen');
+    return <ProfileCreation user={auth.currentUser} onComplete={() => window.location.reload()} />;
   }
 
-  // If no profile, show profile creation
-  if (!profile) {
-    return <ProfileCreation user={user} onComplete={handleProfileComplete} />;
-  }
-
-  // If authenticated and has profile, show HomePage
+  // Show homepage if everything is ready
+  console.log('Showing homepage with drops:', drops.length);
   return (
-    <HomePage 
-      user={profile} 
-      drops={drops} 
-      onSignOut={handleSignOut}
-    />
+    <Box>
+      <HomePage 
+        user={user} 
+        drops={drops}
+        onSignOut={handleSignOut}
+      />
+    </Box>
   );
 }
 
