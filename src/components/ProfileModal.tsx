@@ -60,6 +60,12 @@ const CUISINES = [
 
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 
+const MEETING_PREFERENCES = [
+  { value: 'coffee', label: 'Coffee Shop' },
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'outdoor', label: 'Outdoor Space' }
+];
+
 const ProfileModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -75,6 +81,7 @@ const ProfileModal: React.FC<{
     cuisinePreferences: initialData?.cuisinePreferences || [],
     location: initialData?.location || '',
     priceRange: initialData?.priceRange || '',
+    meetingPreference: initialData?.meetingPreference || '',
     photoURL: initialData?.photoURL || user?.photoURL || ''
   });
 
@@ -87,6 +94,7 @@ const ProfileModal: React.FC<{
         cuisinePreferences: initialData.cuisinePreferences || [],
         location: initialData.location || '',
         priceRange: initialData.priceRange || '',
+        meetingPreference: initialData.meetingPreference || '',
         photoURL: initialData.photoURL || user?.photoURL || ''
       });
     }
@@ -220,6 +228,22 @@ const ProfileModal: React.FC<{
               >
                 {PRICE_RANGES.map(range => (
                   <option key={range} value={range}>{range}</option>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl>
+              <FormLabel fontWeight="bold" fontSize="lg">Meeting Preference</FormLabel>
+              <Select 
+                name="meetingPreference"
+                value={profileData.meetingPreference}
+                onChange={handleInputChange}
+                placeholder="Select your preferred meeting style"
+              >
+                {MEETING_PREFERENCES.map(pref => (
+                  <option key={pref.value} value={pref.value}>
+                    {pref.label}
+                  </option>
                 ))}
               </Select>
             </FormControl>

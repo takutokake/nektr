@@ -43,6 +43,12 @@ const LOCATIONS = [
 
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
 
+const MEETING_PREFERENCES = [
+  { value: 'coffee', label: 'Coffee Shop' },
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'outdoor', label: 'Outdoor Space' }
+];
+
 interface ProfileCreationProps {
   user: User;
   onComplete?: () => void;
@@ -54,6 +60,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   const [priceRange, setPriceRange] = useState('');
   const [interests, setInterests] = useState<string[]>([]);
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>([]);
+  const [meetingPreference, setMeetingPreference] = useState('');
   const toast = useToast();
 
   const handleSignOut = async () => {
@@ -84,7 +91,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     e.preventDefault();
 
     // Basic validation
-    if (!displayName || !location || !priceRange) {
+    if (!displayName || !location || !priceRange || !meetingPreference) {
       toast({
         title: 'Incomplete Profile',
         description: 'Please fill out all required fields',
@@ -103,6 +110,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         displayName,
         location,
         priceRange,
+        meetingPreference,
         interests, 
         cuisinePreferences, 
         createdAt: Timestamp.now(),
@@ -208,6 +216,21 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                   >
                     {PRICE_RANGES.map(range => (
                       <option key={range} value={range}>{range}</option>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <FormControl isRequired>
+                  <FormLabel fontWeight="bold" fontSize="lg">Meeting Preference</FormLabel>
+                  <Select 
+                    placeholder="Select your preferred meeting style"
+                    value={meetingPreference}
+                    onChange={(e) => setMeetingPreference(e.target.value)}
+                  >
+                    {MEETING_PREFERENCES.map(pref => (
+                      <option key={pref.value} value={pref.value}>
+                        {pref.label}
+                      </option>
                     ))}
                   </Select>
                 </FormControl>

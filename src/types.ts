@@ -18,20 +18,17 @@ export interface Drop {
   id: string;
   title: string;
   description: string;
-  startTime: Timestamp;
-  endTime: Timestamp;
+  startTime: Timestamp;  // When matches are made and users meet
+  registrationDeadline: Timestamp;  // Last time users can register
   location: string;
   maxParticipants: number;
   participants: string[];
   theme: string;
   isSpecialEvent: boolean;
-  icon?: any;
-  
   registeredUsers: string[];
   currentParticipants: number;
   priceRange: string;
   status: 'upcoming' | 'matched' | 'completed';
-  registrationDeadline: Timestamp;
 }
 
 export interface Match {
@@ -61,6 +58,7 @@ export interface UserProfile {
   cuisinePreferences: string[];
   location: string;
   priceRange: string;
+  meetingPreference: string;
   isAdmin: boolean;
   streak: number;
   totalMatches: number;
@@ -83,7 +81,7 @@ export const createDefaultDrop = (partialDrop: Partial<Drop> = {}): Drop => ({
   title: partialDrop.title || 'Untitled Drop',
   description: partialDrop.description || '',
   startTime: partialDrop.startTime || Timestamp.now(),
-  endTime: partialDrop.endTime || Timestamp.now(),
+  registrationDeadline: partialDrop.registrationDeadline || Timestamp.now(),
   location: partialDrop.location || 'TBD',
   maxParticipants: partialDrop.maxParticipants || 10,
   participants: partialDrop.participants || [],
@@ -92,8 +90,7 @@ export const createDefaultDrop = (partialDrop: Partial<Drop> = {}): Drop => ({
   registeredUsers: partialDrop.registeredUsers || [],
   currentParticipants: partialDrop.currentParticipants || 0,
   priceRange: partialDrop.priceRange || '$',
-  status: partialDrop.status || 'upcoming',
-  registrationDeadline: partialDrop.registrationDeadline || Timestamp.now(),
+  status: partialDrop.status || 'upcoming'
 });
 
 export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => ({
@@ -122,6 +119,7 @@ export const createDefaultUserProfile = (partialUser: Partial<UserProfile> = {})
   cuisinePreferences: partialUser.cuisinePreferences || [],
   location: partialUser.location || '',
   priceRange: partialUser.priceRange || '$',
+  meetingPreference: partialUser.meetingPreference || '',
   isAdmin: partialUser.isAdmin || false,
   streak: partialUser.streak || 0,
   totalMatches: partialUser.totalMatches || 0,

@@ -1,4 +1,4 @@
-import { collection, query, where, orderBy, limit, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, getDocs, Timestamp, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Drop } from '../types';
 
@@ -69,6 +69,36 @@ class DropsCache {
       id: doc.id,
       ...doc.data()
     } as Drop));
+  }
+
+  public async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
+    const dropWithTimestamp = {
+      ...drop,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      participants: [],
+      currentParticipants: 0,
+    };
+
+    const docRef = await addDoc(collection(db, 'drops'), dropWithTimestamp);
+    const newDrop = { ...dropWithTimestamp, id: docRef.id } as Drop;
+    
+    // Update cache with new drop
+    const cacheKeys = Array.from(this.cache.keys());
+    cacheKeys.forEach(key => {
+      const cached = this.cache.get(key);
+      if (cached) {
+        const updatedDrops = [...cached.data, newDrop].sort(
+          (a, b) => a.startTime.toMillis() - b.startTime.toMillis()
+        );
+        this.cache.set(key, {
+          ...cached,
+          data: updatedDrops
+        });
+      }
+    });
+
+    return newDrop;
   }
 
   public clearCache(userId: string): void {

@@ -8,13 +8,21 @@ import {
   Button, 
   Select,
   Checkbox,
-  useToast
+  useToast,
+  HStack,
+  NumberInput,
+  NumberInputField,
+  NumberInputStepper,
+  NumberIncrementStepper,
+  NumberDecrementStepper,
+  Text
 } from '@chakra-ui/react';
 import { Timestamp } from 'firebase/firestore';
-import { Drop, createDefaultDrop } from '../../types';
+import { Drop } from '../../types';
+import { dropsCache } from '../../services/dropsService';
 
 interface AdminDropsProps {
-  onDropCreated?: (drop: Drop) => Promise<void>;
+  onDropCreated?: (drop: Drop) => void;
 }
 
 const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
@@ -22,39 +30,51 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
   const [dropData, setDropData] = useState({
     title: '',
     description: '',
-    startTime: Timestamp.now(),
-    registrationDeadline: Timestamp.now(),
+    dropDate: '',
+    dropTime: '',
+    registrationDate: '',
+    registrationTime: '',
     maxParticipants: 10,
-    currentParticipants: 0,
     location: '',
     priceRange: '$',
     status: 'upcoming' as const,
-    registeredUsers: [],
     theme: 'General',
-    isSpecialEvent: false,
-    endTime: Timestamp.now()
+    isSpecialEvent: false
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newDrop = createDefaultDrop({
-      title: dropData.title,
-      description: dropData.description,
-      startTime: dropData.startTime,
-      endTime: dropData.endTime,
-      location: dropData.location,
-      maxParticipants: dropData.maxParticipants,
-      theme: dropData.theme,
-      isSpecialEvent: dropData.isSpecialEvent,
-      registrationDeadline: dropData.registrationDeadline,
-      priceRange: dropData.priceRange,
-      status: dropData.status,
-    });
-
     try {
+      // Convert date and time strings to Timestamps
+      const startTimestamp = Timestamp.fromDate(new Date(`${dropData.dropDate}T${dropData.dropTime}`));
+      const registrationTimestamp = Timestamp.fromDate(new Date(`${dropData.registrationDate}T${dropData.registrationTime}`));
+
+      // Validate timestamps
+      if (registrationTimestamp.toMillis() >= startTimestamp.toMillis()) {
+        throw new Error('Registration deadline must be before the drop time');
+      }
+
+      const newDrop = {
+        title: dropData.title,
+        description: dropData.description,
+        startTime: startTimestamp,
+        registrationDeadline: registrationTimestamp,
+        maxParticipants: dropData.maxParticipants,
+        location: dropData.location,
+        priceRange: dropData.priceRange,
+        status: dropData.status,
+        theme: dropData.theme,
+        isSpecialEvent: dropData.isSpecialEvent,
+        participants: [],
+        registeredUsers: [],
+        currentParticipants: 0
+      };
+
+      const createdDrop = await dropsCache.createDrop(newDrop);
+      
       if (onDropCreated) {
-        await onDropCreated(newDrop);
+        onDropCreated(createdDrop);
       }
       
       toast({
@@ -69,22 +89,21 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
       setDropData({
         title: '',
         description: '',
-        startTime: Timestamp.now(),
-        registrationDeadline: Timestamp.now(),
+        dropDate: '',
+        dropTime: '',
+        registrationDate: '',
+        registrationTime: '',
         maxParticipants: 10,
-        currentParticipants: 0,
         location: '',
         priceRange: '$',
         status: 'upcoming',
-        registeredUsers: [],
         theme: 'General',
-        isSpecialEvent: false,
-        endTime: Timestamp.now()
+        isSpecialEvent: false
       });
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create drop.",
+        description: error instanceof Error ? error.message : "Failed to create drop.",
         status: "error",
         duration: 3000,
         isClosable: true,
@@ -97,7 +116,14 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
     const { name, value } = e.target;
     setDropData(prev => ({
       ...prev,
-      [name]: name === 'maxParticipants' ? Number(value) : value
+      [name]: value
+    }));
+  };
+
+  const handleNumberChange = (value: string) => {
+    setDropData(prev => ({
+      ...prev,
+      maxParticipants: parseInt(value) || 10
     }));
   };
 
@@ -125,6 +151,48 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
             />
           </FormControl>
 
+          <FormControl isRequired>
+            <FormLabel>Drop Date & Time</FormLabel>
+            <Text fontSize="sm" color="gray.600" mb={2}>
+              When matches will be made and users will meet
+            </Text>
+            <HStack>
+              <Input
+                name="dropDate"
+                type="date"
+                value={dropData.dropDate}
+                onChange={handleInputChange}
+              />
+              <Input
+                name="dropTime"
+                type="time"
+                value={dropData.dropTime}
+                onChange={handleInputChange}
+              />
+            </HStack>
+          </FormControl>
+
+          <FormControl isRequired>
+            <FormLabel>Registration Deadline</FormLabel>
+            <Text fontSize="sm" color="gray.600" mb={2}>
+              Last time users can sign up for this drop
+            </Text>
+            <HStack>
+              <Input
+                name="registrationDate"
+                type="date"
+                value={dropData.registrationDate}
+                onChange={handleInputChange}
+              />
+              <Input
+                name="registrationTime"
+                type="time"
+                value={dropData.registrationTime}
+                onChange={handleInputChange}
+              />
+            </HStack>
+          </FormControl>
+
           <FormControl>
             <FormLabel>Location</FormLabel>
             <Input 
@@ -133,6 +201,22 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
               onChange={handleInputChange}
               placeholder="Enter location"
             />
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>Max Participants</FormLabel>
+            <NumberInput
+              min={2}
+              max={100}
+              value={dropData.maxParticipants}
+              onChange={handleNumberChange}
+            >
+              <NumberInputField />
+              <NumberInputStepper>
+                <NumberIncrementStepper />
+                <NumberDecrementStepper />
+              </NumberInputStepper>
+            </NumberInput>
           </FormControl>
 
           <FormControl>
@@ -146,6 +230,19 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
               <option value="Tech">Tech</option>
               <option value="Food">Food</option>
               <option value="Sports">Sports</option>
+            </Select>
+          </FormControl>
+
+          <FormControl>
+            <FormLabel>Price Range</FormLabel>
+            <Select 
+              name="priceRange"
+              value={dropData.priceRange}
+              onChange={handleInputChange}
+            >
+              <option value="$">$</option>
+              <option value="$$">$$</option>
+              <option value="$$$">$$$</option>
             </Select>
           </FormControl>
 

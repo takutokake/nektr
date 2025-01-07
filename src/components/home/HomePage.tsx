@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Container, 
@@ -15,7 +15,9 @@ import {
   Grid,
   GridItem,
   Tooltip,
-  useToast
+  useToast,
+  Image,
+  SimpleGrid
 } from '@chakra-ui/react';
 import { 
   FaFire, 
@@ -32,7 +34,7 @@ import ProfileModal from '../ProfileModal';
 import ChallengesSection from './ChallengesSection';
 import DropCountdown from './DropCountdown';
 import UpcomingDrops from './UpcomingDrops';
-import DropsSection from './DropsSection';
+import RegisteredDrops from './RegisteredDrops';
 import MatchPreview from './MatchPreview';
 import AdminDrops from '../admin/AdminDrops';
 import { Timestamp } from 'firebase/firestore';
@@ -69,9 +71,14 @@ const NavButton: React.FC<NavButtonProps> = ({ icon, label, onClick }) => (
 const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const { logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [dropsData, setDropsData] = useState<Drop[]>(drops);
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const toast = useToast();
+
+  useEffect(() => {
+    setDropsData(drops);
+  }, [drops]);
 
   const handleOpenProfileModal = () => {
     setIsProfileModalOpen(true);
@@ -105,13 +112,43 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
     }
   };
 
+  const handleDropUpdate = () => {
+    // Refresh drops data from parent component
+    setDropsData(drops);
+  };
+
   // Convert Timestamp to Date for DropCountdown
   const getStartTime = (timestamp?: Timestamp) => {
     return timestamp ? timestamp.toDate() : new Date();
   };
 
+  // Filter drops based on user registration
+  const registeredDrops = dropsData.filter(drop => 
+    drop.participants?.includes(user.uid)
+  );
+
+  const handleDropJoin = (dropId: string) => {
+    toast({
+      title: "Drop joined!",
+      description: "You can view it in your registered drops section",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+  };
+
+  const handleDropUnregister = (dropId: string) => {
+    toast({
+      title: "Drop unregistered",
+      description: "You've been removed from the drop",
+      status: "success",
+      duration: 3000,
+      isClosable: true,
+    });
+  };
+
   return (
-    <Box>
+    <Box minH="100vh" bg={bgColor}>
       {/* Top Navigation Bar */}
       <Flex 
         as="nav" 
@@ -122,13 +159,21 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         bg="white" 
         boxShadow="md"
       >
-        <Heading 
-          size="lg" 
-          color="pink.500" 
-          fontWeight="bold"
-        >
-          Nectr
-        </Heading>
+        <HStack spacing={0} alignItems="center">
+          <Image 
+            src="/nectr-logo.png" 
+            alt="Nectr Logo" 
+            boxSize="50px" 
+            mr={1}
+          />
+          <Heading 
+            size="lg" 
+            color="#FDAA25" 
+            fontWeight="bold"
+          >
+            Nektr
+          </Heading>
+        </HStack>
         
         <Spacer />
         
@@ -158,11 +203,17 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
           <GridItem colSpan={2}>
             <VStack spacing={6} align="stretch">
               <DropCountdown 
-                startTime={getStartTime(drops[0]?.startTime)} 
-                theme={drops[0]?.theme || 'General'} 
+                startTime={getStartTime(dropsData[0]?.startTime)} 
+                theme={dropsData[0]?.theme || 'General'} 
               />
-              <UpcomingDrops drops={drops} />
-              <DropsSection user={user} />
+              <UpcomingDrops 
+                drops={dropsData} 
+                onDropJoin={handleDropJoin}
+              />
+              <RegisteredDrops 
+                drops={registeredDrops}
+                onDropUnregister={handleDropUnregister}
+              />
             </VStack>
           </GridItem>
           
