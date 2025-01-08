@@ -1,43 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Container, 
-  Heading, 
-  Text, 
-  Progress, 
-  VStack,
-  HStack,
-  Flex, 
-  Spacer, 
-  Avatar, 
+import {
+  Box,
   Button,
-  Icon,
+  Flex,
+  HStack,
+  Avatar,
+  Text,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem,
+  Switch,
+  Spacer,
+  Image,
+  Heading,
+  Progress,
   Grid,
   GridItem,
+  VStack,
+  Container,
   Tooltip,
+  Icon,
   useToast,
-  Image,
-  SimpleGrid
+  useColorModeValue
 } from '@chakra-ui/react';
-import { 
-  FaFire, 
-  FaHandshake, 
-  FaTrophy, 
-  FaCalendarAlt, 
-  FaUserFriends 
-} from 'react-icons/fa';
-import { IconType } from 'react-icons';
-import { useColorModeValue } from '@chakra-ui/react';
+import { FaCog } from 'react-icons/fa';
 import { UserProfile, Drop } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import ProfileModal from '../ProfileModal';
-import ChallengesSection from './ChallengesSection';
-import DropCountdown from './DropCountdown';
 import UpcomingDrops from './UpcomingDrops';
 import RegisteredDrops from './RegisteredDrops';
-import MatchPreview from './MatchPreview';
+import ChallengesSection from './ChallengesSection';
 import AdminDrops from '../admin/AdminDrops';
-import { Timestamp } from 'firebase/firestore';
+import { auth, db } from '../../firebase';
+import { 
+  Timestamp,
+  collection,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+  doc,
+  updateDoc
+} from 'firebase/firestore';
 
 interface HomePageProps {
   user: UserProfile;
@@ -46,7 +52,7 @@ interface HomePageProps {
 }
 
 interface NavButtonProps {
-  icon: IconType;
+  icon: any;
   label: string;
   onClick: () => void;
 }
@@ -72,9 +78,12 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const { logout } = useAuth();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [dropsData, setDropsData] = useState<Drop[]>(drops);
-  const bgColor = useColorModeValue('white', 'gray.800');
+  const [dropsCache, setDropsCache] = useState<{[key: string]: Drop}>({});
+  const [participantsCache, setParticipantsCache] = useState<{[key: string]: any}>({});
+  const bgColor = useColorModeValue('gray.50', 'gray.900');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const toast = useToast();
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setDropsData(drops);
@@ -118,7 +127,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   };
 
   // Convert Timestamp to Date for DropCountdown
-  const getStartTime = (timestamp?: Timestamp) => {
+  const getStartTime = (timestamp?: any) => {
     return timestamp ? timestamp.toDate() : new Date();
   };
 
@@ -147,6 +156,118 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
     });
   };
 
+  const toggleAdminMode = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        tempDisableAdmin: user.tempDisableAdmin ? false : true
+      });
+      
+      // Update local user state
+      if (user) {
+        user.tempDisableAdmin = !user.tempDisableAdmin;
+      }
+      
+      // Refresh the page to update the view
+      window.location.reload();
+    } catch (error) {
+      console.error('Error toggling admin mode:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to toggle admin mode',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDrops = async () => {
+    try {
+      setLoading(true);
+      
+      // Get current timestamp for filtering
+      const now = Timestamp.now();
+      
+      // Query drops that haven't started yet
+      const dropsRef = collection(db, 'drops');
+      const q = query(
+        dropsRef,
+        where('startTime', '>', now),
+        orderBy('startTime', 'asc'),
+        limit(10) // Limit to reduce reads
+      );
+      
+      const querySnapshot = await getDocs(q);
+      const fetchedDrops: Drop[] = [];
+      const newDropsCache: {[key: string]: Drop} = {};
+      const dropIds: string[] = [];
+      
+      querySnapshot.forEach((doc) => {
+        const drop = { id: doc.id, ...doc.data() } as Drop;
+        fetchedDrops.push(drop);
+        newDropsCache[doc.id] = drop;
+        dropIds.push(doc.id);
+      });
+      
+      setDropsData(fetchedDrops);
+      setDropsCache(prev => ({ ...prev, ...newDropsCache }));
+      
+      // Batch get participants for all drops
+      if (dropIds.length > 0) {
+        const participantsQuery = query(
+          collection(db, 'dropParticipants'),
+          where('__name__', 'in', dropIds)
+        );
+        const participantsSnap = await getDocs(participantsQuery);
+        
+        const newParticipantsCache: {[key: string]: any} = {};
+        participantsSnap.forEach(doc => {
+          newParticipantsCache[doc.id] = doc.data();
+        });
+        
+        setParticipantsCache(prev => ({ ...prev, ...newParticipantsCache }));
+      }
+      
+    } catch (error) {
+      console.error('Error fetching drops:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch drops',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getParticipantsCount = (dropId: string): number => {
+    return participantsCache[dropId]?.totalParticipants || 0;
+  };
+
+  const isUserRegistered = (dropId: string): boolean => {
+    const user = auth.currentUser;
+    if (!user) return false;
+    return !!participantsCache[dropId]?.participants[user.uid];
+  };
+
+  useEffect(() => {
+    fetchDrops();
+  }, []);
+
+  const handleAdminMode = () => {
+    if (user?.isAdmin && !user?.tempDisableAdmin) {
+      // Removed navigate reference
+    }
+  };
+
   return (
     <Box minH="100vh" bg={bgColor}>
       {/* Top Navigation Bar */}
@@ -171,24 +292,35 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
             color="#FDAA25" 
             fontWeight="bold"
           >
-            Nektr
+            Nectr
           </Heading>
         </HStack>
         
         <Spacer />
         
         <HStack spacing={4}>
-          <Button colorScheme="red" size="sm" onClick={handleLogout}>
+          <Button colorScheme="red" size="sm" onClick={onSignOut}>
             Sign Out
           </Button>
           <Avatar 
             size="md" 
             name={user?.displayName || 'User'} 
             src={user?.photoURL} 
-            onClick={handleOpenProfileModal}
+            onClick={() => setIsProfileModalOpen(true)}
             cursor="pointer"
             _hover={{ opacity: 0.8 }}
           />
+          {user?.isAdmin && (
+            <HStack spacing={2}>
+              <Text>Admin Mode</Text>
+              <Switch
+                isChecked={!user.tempDisableAdmin}
+                onChange={toggleAdminMode}
+                isDisabled={loading}
+                colorScheme="blue"
+              />
+            </HStack>
+          )}
         </HStack>
       </Flex>
 
@@ -202,10 +334,6 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         <Grid templateColumns="repeat(3, 1fr)" gap={6}>
           <GridItem colSpan={2}>
             <VStack spacing={6} align="stretch">
-              <DropCountdown 
-                startTime={getStartTime(dropsData[0]?.startTime)} 
-                theme={dropsData[0]?.theme || 'General'} 
-              />
               <UpcomingDrops 
                 drops={dropsData} 
                 onDropJoin={handleDropJoin}
@@ -220,7 +348,6 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
           <GridItem colSpan={1}>
             <VStack spacing={6} align="stretch">
               <ChallengesSection />
-              <MatchPreview user={user} />
               
               {/* Quick Stats */}
               <Box 

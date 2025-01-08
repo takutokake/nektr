@@ -18,8 +18,8 @@ import {
   FaMoneyBillWave, 
   FaCalendarCheck 
 } from 'react-icons/fa';
-import { Timestamp, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { Drop } from '../../types';
+import { Timestamp, doc, getDoc, setDoc, updateDoc, writeBatch, collection } from 'firebase/firestore';
+import { Drop, DropParticipants } from '../../types';
 import { db, auth } from '../../firebase';
 
 interface UpcomingDropsProps {
@@ -47,41 +47,96 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
       return;
     }
 
-    // Early return if already joined or drop is full
-    if (drop.participants?.includes(user.uid)) {
-      toast({
-        title: "Already joined",
-        description: "You're already part of this drop",
-        status: "info",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    if (drop.participants && drop.maxParticipants && drop.participants.length >= drop.maxParticipants) {
-      toast({
-        title: "Drop is full",
-        description: "This drop has reached its maximum capacity",
-        status: "error",
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
     setJoiningDrops(prev => new Set(prev).add(drop.id));
 
     try {
       const dropRef = doc(db, 'drops', drop.id);
-      const currentParticipants = drop.participants || [];
+      const participantsRef = doc(db, 'dropParticipants', drop.id);
       
-      // Simple update with the new participant added
-      await updateDoc(dropRef, {
-        participants: [...currentParticipants, user.uid]
-      });
+      // Get user profile for additional info
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
 
-      console.log('Updated participants:', [...currentParticipants, user.uid]); // Debug log
+      // Get the current drop participants document
+      const participantsSnap = await getDoc(participantsRef);
+      const participantsData = participantsSnap.exists() 
+        ? participantsSnap.data() as DropParticipants 
+        : {
+            dropId: drop.id,
+            dropName: drop.title,
+            participants: {},
+            totalParticipants: 0,
+            maxParticipants: drop.maxParticipants || 10
+          };
+
+      // Check if user is already joined
+      if (participantsData.participants[user.uid]) {
+        toast({
+          title: "Already joined",
+          description: "You're already part of this drop",
+          status: "info",
+          duration: 3000,
+          isClosable: true,
+        });
+        setJoiningDrops(prev => {
+          const next = new Set(prev);
+          next.delete(drop.id);
+          return next;
+        });
+        return;
+      }
+
+      // Check if drop is full
+      if (participantsData.totalParticipants >= (drop.maxParticipants || 10)) {
+        toast({
+          title: "Drop is full",
+          description: "This drop has reached its maximum capacity",
+          status: "error",
+          duration: 3000,
+          isClosable: true,
+        });
+        setJoiningDrops(prev => {
+          const next = new Set(prev);
+          next.delete(drop.id);
+          return next;
+        });
+        return;
+      }
+
+      // Prepare batch write
+      const batch = writeBatch(db);
+
+      // Update participants document
+      const newParticipant = {
+        name: userData?.name || user.email || 'Anonymous',
+        registeredAt: Timestamp.now(),
+        status: 'pending' as const,
+        profile: {
+          interests: userData?.interests || [],
+          cuisines: userData?.cuisines || []
+        }
+      };
+
+      participantsData.participants[user.uid] = newParticipant;
+      participantsData.totalParticipants = Object.keys(participantsData.participants).length;
+
+      // Set/update the participants document
+      batch.set(participantsRef, participantsData);
+
+      // Update drop participants array (for backward compatibility)
+      const dropSnap = await getDoc(dropRef);
+      if (dropSnap.exists()) {
+        const dropData = dropSnap.data();
+        const currentParticipants = dropData.participants || [];
+        batch.update(dropRef, {
+          participants: [...currentParticipants, user.uid],
+          currentParticipants: participantsData.totalParticipants
+        });
+      }
+
+      // Commit the batch
+      await batch.commit();
 
       toast({
         title: "Successfully joined!",
@@ -96,7 +151,6 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
       }
     } catch (error) {
       console.error('Error joining drop:', error);
-      // More detailed error message
       const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
         title: "Error joining drop",

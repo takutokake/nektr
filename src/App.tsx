@@ -1,34 +1,35 @@
 import { useState, useEffect } from 'react'
-import { Box, Spinner, Center, useToast } from '@chakra-ui/react'
+import { Box, Center, Spinner, useToast } from '@chakra-ui/react'
 import './App.css'
 import { useAuth } from './contexts/AuthContext'
 import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
-import ProfileCreation from './components/ProfileCreation'
-import { Drop } from './types'
+import AdminDashboard from './components/admin/AdminDashboard'
+import { Drop, UserProfile } from './types'
 import { dropsCache } from './services/dropsService'
-import { auth } from './firebase'
+import { db } from './firebase'
+import { doc, getDoc } from 'firebase/firestore'
+import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 
 function App() {
-  console.log('App rendering');
   const { user, loading, error, logout } = useAuth();
   const [drops, setDrops] = useState<Drop[]>([]);
   const [dropsLoading, setDropsLoading] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const toast = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchDrops = async () => {
-      if (!user?.uid) return;
-      
       try {
         setDropsLoading(true);
-        const upcomingDrops = await dropsCache.getUpcomingDrops(user.uid);
-        setDrops(upcomingDrops);
-      } catch (err) {
-        console.error('Error fetching drops:', err);
+        const cachedDrops = await dropsCache.getDrops();
+        setDrops(cachedDrops);
+      } catch (error) {
+        console.error('Error fetching drops:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load upcoming drops',
+          description: 'Failed to fetch drops',
           status: 'error',
           duration: 3000,
           isClosable: true,
@@ -43,22 +44,15 @@ function App() {
     }
   }, [user?.uid, toast]);
 
-  const handleSignOut = async () => {
+  const handleLogout = async () => {
     try {
-      await logout();
-      dropsCache.clearAllCache();
-      toast({
-        title: 'Success',
-        description: 'You have been signed out successfully',
-        status: 'success',
-        duration: 3000,
-        isClosable: true,
-      });
-    } catch (err) {
-      console.error('Sign out error:', err);
+      await logout?.();
+      navigate('/');
+    } catch (error) {
+      console.error('Error logging out:', error);
       toast({
         title: 'Error',
-        description: 'Failed to sign out',
+        description: 'Failed to log out',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -66,62 +60,55 @@ function App() {
     }
   };
 
-  // Show loading spinner while authentication is being checked
+  const fetchUserProfile = async () => {
+    if (!user) return;
+    
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        const userData = userDoc.data() as UserProfile;
+        setUserProfile(userData);
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchUserProfile();
+    }
+  }, [user]);
+
   if (loading) {
-    console.log('Auth loading...');
     return (
       <Center h="100vh">
-        <Spinner size="xl" color="pink.500" thickness="4px" />
+        <Spinner size="xl" />
       </Center>
     );
   }
 
-  // Show error toast if there's an error
   if (error) {
-    console.log('Auth error:', error);
-    toast({
-      title: 'Error',
-      description: error,
-      status: 'error',
-      duration: 5000,
-      isClosable: true,
-    });
+    return <div>Error: {error.message}</div>;
   }
 
-  // Show auth screen if no user
   if (!user) {
-    console.log('No user, showing auth screen');
-    return (
-      <Box minH="100vh" display="flex" alignItems="center" justifyContent="center">
-        <Auth />
-      </Box>
-    );
+    return <Auth />;
   }
 
-  // Check if user has completed their profile
-  const isProfileComplete = Boolean(
-    user.displayName && 
-    user.location && 
-    user.priceRange && 
-    user.interests?.length > 0 && 
-    user.cuisinePreferences?.length > 0
-  );
-
-  // Show profile creation if profile is not complete
-  if (!isProfileComplete && auth.currentUser) {
-    console.log('Profile incomplete, showing creation screen');
-    return <ProfileCreation user={auth.currentUser} onComplete={() => window.location.reload()} />;
-  }
-
-  // Show homepage if everything is ready
-  console.log('Showing homepage with drops:', drops.length);
   return (
-    <Box>
-      <HomePage 
-        user={user} 
-        drops={drops}
-        onSignOut={handleSignOut}
-      />
+    <Box minH="100vh">
+      {user.isAdmin && !user.tempDisableAdmin ? (
+        <AdminDashboard />
+      ) : (
+        <HomePage 
+          user={user}
+          drops={drops}
+          onSignOut={handleLogout}
+        />
+      )}
     </Box>
   );
 }

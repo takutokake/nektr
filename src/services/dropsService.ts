@@ -12,6 +12,9 @@ class DropsCache {
   private static instance: DropsCache;
   private cache: Map<string, CacheItem<Drop[]>>;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+  private drops: Drop[] = [];
+  private lastFetch: Date | null = null;
+  private readonly cacheDuration = 5 * 60 * 1000; // 5 minutes
 
   private constructor() {
     this.cache = new Map();
@@ -101,6 +104,38 @@ class DropsCache {
     return newDrop;
   }
 
+  public async getDrops(): Promise<Drop[]> {
+    if (this.shouldRefreshCache()) {
+      await this.refreshCache();
+    }
+    return this.drops;
+  }
+
+  private shouldRefreshCache(): boolean {
+    if (!this.lastFetch) return true;
+    const now = new Date();
+    return now.getTime() - this.lastFetch.getTime() > this.cacheDuration;
+  }
+
+  private async refreshCache(): Promise<void> {
+    try {
+      const now = Timestamp.now();
+      const dropsRef = collection(db, 'drops');
+      const q = query(dropsRef, where('startTime', '>', now));
+      const querySnapshot = await getDocs(q);
+      
+      this.drops = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+      
+      this.lastFetch = new Date();
+    } catch (error) {
+      console.error('Error refreshing drops cache:', error);
+      throw error;
+    }
+  }
+
   public clearCache(userId: string): void {
     const cacheKey = this.getCacheKey(userId);
     this.cache.delete(cacheKey);
@@ -108,6 +143,11 @@ class DropsCache {
 
   public clearAllCache(): void {
     this.cache.clear();
+  }
+
+  public async clearDropsCache(): Promise<void> {
+    this.drops = [];
+    this.lastFetch = null;
   }
 }
 

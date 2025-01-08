@@ -50,22 +50,31 @@ export interface Match {
 }
 
 export interface UserProfile {
+  id: string;
   uid: string;
-  displayName: string;
+  name: string;
   email: string;
+  displayName: string;
   photoURL?: string;
   interests: string[];
+  cuisines: string[];
   cuisinePreferences: string[];
   location: string;
-  priceRange: string;
-  meetingPreference: string;
-  isAdmin: boolean;
+  bio?: string;
+  avatar?: string;
+  isAdmin?: boolean;
+  tempDisableAdmin?: boolean;
+  registeredDrops?: string[];
+  profileComplete?: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
   streak: number;
   totalMatches: number;
   progress: number;
   connections: number;
   completedChallenges: string[];
-  registeredDrops?: string[];
+  meetingPreference: string;
+  priceRange: string;
 }
 
 export interface DropRegistration {
@@ -73,6 +82,51 @@ export interface DropRegistration {
   userId: string;
   registeredAt: Timestamp;
   status: 'pending' | 'confirmed' | 'matched' | 'cancelled';
+}
+
+// Centralized Participants Collection
+export interface DropParticipants {
+  dropId: string;
+  dropName: string;
+  participants: {
+    [userId: string]: {
+      name: string;
+      registeredAt: Timestamp;
+      status: 'pending' | 'confirmed' | 'matched' | 'cancelled';
+      profile?: {
+        interests?: string[];
+        cuisines?: string[];
+      };
+    }
+  };
+  totalParticipants: number;
+  maxParticipants: number;
+}
+
+// Centralized Matches Collection
+export interface DropMatches {
+  dropId: string;
+  dropName: string;
+  matches: {
+    [matchId: string]: {
+      participants: {
+        [userId: string]: {
+          name: string;
+          profileId: string;
+        }
+      };
+      compatibility: number;
+      commonInterests: string[];
+      commonCuisines: string[];
+      status: 'pending' | 'confirmed' | 'cancelled';
+      meetingDetails?: {
+        location: string;
+        time: Timestamp;
+      };
+      createdAt: Timestamp;
+    }
+  };
+  totalMatches: number;
 }
 
 // Default factory functions to help with initialization
@@ -111,20 +165,29 @@ export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => 
 });
 
 export const createDefaultUserProfile = (partialUser: Partial<UserProfile> = {}): UserProfile => ({
+  id: partialUser.id || '',
   uid: partialUser.uid || '',
-  displayName: partialUser.displayName || 'New User',
+  name: partialUser.name || 'New User',
   email: partialUser.email || '',
+  displayName: partialUser.displayName || 'New User',
   photoURL: partialUser.photoURL || '',
   interests: partialUser.interests || [],
+  cuisines: partialUser.cuisines || [],
   cuisinePreferences: partialUser.cuisinePreferences || [],
   location: partialUser.location || '',
-  priceRange: partialUser.priceRange || '$',
-  meetingPreference: partialUser.meetingPreference || '',
+  bio: partialUser.bio || '',
+  avatar: partialUser.avatar || '',
   isAdmin: partialUser.isAdmin || false,
+  tempDisableAdmin: partialUser.tempDisableAdmin || false,
+  registeredDrops: partialUser.registeredDrops || [],
+  profileComplete: partialUser.profileComplete || false,
+  createdAt: partialUser.createdAt || Timestamp.now(),
+  updatedAt: partialUser.updatedAt || Timestamp.now(),
   streak: partialUser.streak || 0,
   totalMatches: partialUser.totalMatches || 0,
   progress: partialUser.progress || 0,
   connections: partialUser.connections || 0,
   completedChallenges: partialUser.completedChallenges || [],
-  registeredDrops: partialUser.registeredDrops || [],
+  meetingPreference: partialUser.meetingPreference || '',
+  priceRange: partialUser.priceRange || ''
 });

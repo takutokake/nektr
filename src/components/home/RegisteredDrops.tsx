@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   VStack, 
@@ -11,9 +11,9 @@ import {
   useToast,
   Icon
 } from '@chakra-ui/react';
-import { Timestamp, doc, runTransaction } from 'firebase/firestore';
+import { Timestamp, doc, runTransaction, query, collection, where, getDocs, orderBy } from 'firebase/firestore';
 import { FaCalendarAlt, FaMapMarkerAlt, FaClock, FaTrash } from 'react-icons/fa';
-import { Drop } from '../../types';
+import { Drop, DropParticipants } from '../../types';
 import { db, auth } from '../../firebase';
 
 interface RegisteredDropsProps {
@@ -23,9 +23,14 @@ interface RegisteredDropsProps {
 
 const RegisteredDrops: React.FC<RegisteredDropsProps> = ({ drops, onDropUnregister }) => {
   const [unregisteringDrops, setUnregisteringDrops] = useState<Set<string>>(new Set());
+  const [registeredDrops, setRegisteredDrops] = useState<Drop[]>([]);
+  const [registeredDropsCache, setRegisteredDropsCache] = useState<{[key: string]: Drop}>({});
+  const [participantsCache, setParticipantsCache] = useState<{[key: string]: DropParticipants}>({});
+  const [loading, setLoading] = useState(false);
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const toast = useToast();
+  const user = auth.currentUser;
 
   const unregisterFromDrop = async (drop: Drop) => {
     const user = auth.currentUser;
@@ -95,7 +100,100 @@ const RegisteredDrops: React.FC<RegisteredDropsProps> = ({ drops, onDropUnregist
     });
   };
 
-  if (drops.length === 0) {
+  const fetchRegisteredDrops = async () => {
+    if (!auth.currentUser) return;
+
+    try {
+      setLoading(true);
+
+      // Get current timestamp
+      const now = Timestamp.now();
+
+      // First, get the dropParticipants where the user is a participant
+      const participantsQuery = query(
+        collection(db, 'dropParticipants'),
+        where(`participants.${auth.currentUser.uid}`, '!=', null)
+      );
+      
+      const participantsSnap = await getDocs(participantsQuery);
+      const dropIds: string[] = [];
+      const newParticipantsCache: {[key: string]: DropParticipants} = {};
+
+      participantsSnap.forEach(doc => {
+        dropIds.push(doc.id);
+        newParticipantsCache[doc.id] = doc.data() as DropParticipants;
+      });
+
+      setParticipantsCache(prev => ({ ...prev, ...newParticipantsCache }));
+
+      if (dropIds.length === 0) {
+        setRegisteredDrops([]);
+        return;
+      }
+
+      // Split the fetching into chunks to avoid query limitations
+      const fetchDropsInChunks = async (ids: string[]) => {
+        const chunkSize = 10;
+        const drops: Drop[] = [];
+        const dropsCache: {[key: string]: Drop} = {};
+
+        for (let i = 0; i < ids.length; i += chunkSize) {
+          const chunk = ids.slice(i, i + chunkSize);
+          const chunkQuery = query(
+            collection(db, 'drops'),
+            where('__name__', 'in', chunk)
+          );
+
+          const chunkSnap = await getDocs(chunkQuery);
+          chunkSnap.forEach(doc => {
+            const drop = { id: doc.id, ...doc.data() } as Drop;
+            // Only include drops that haven't started yet
+            if (drop.startTime > now) {
+              drops.push(drop);
+              dropsCache[doc.id] = drop;
+            }
+          });
+        }
+
+        // Sort drops by startTime
+        return {
+          drops: drops.sort((a, b) => a.startTime.seconds - b.startTime.seconds),
+          cache: dropsCache
+        };
+      };
+
+      const { drops: fetchedDrops, cache: newCache } = await fetchDropsInChunks(dropIds);
+      setRegisteredDrops(fetchedDrops);
+      setRegisteredDropsCache(prev => ({ ...prev, ...newCache }));
+
+    } catch (error) {
+      console.error('Error fetching registered drops:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch registered drops',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getParticipantsCount = (dropId: string): number => {
+    return participantsCache[dropId]?.totalParticipants || 0;
+  };
+
+  const getRegistrationStatus = (dropId: string): string => {
+    if (!auth.currentUser) return 'unknown';
+    return participantsCache[dropId]?.participants[auth.currentUser.uid]?.status || 'unknown';
+  };
+
+  useEffect(() => {
+    fetchRegisteredDrops();
+  }, []);
+
+  if (registeredDrops.length === 0) {
     return null;
   }
 
@@ -112,7 +210,7 @@ const RegisteredDrops: React.FC<RegisteredDropsProps> = ({ drops, onDropUnregist
           <FaCalendarAlt style={{ marginRight: '10px' }} /> Registered Drops
         </Heading>
 
-        {drops.map((drop) => (
+        {registeredDrops.map((drop) => (
           <Box 
             key={drop.id} 
             bg="gray.50" 
@@ -146,7 +244,7 @@ const RegisteredDrops: React.FC<RegisteredDropsProps> = ({ drops, onDropUnregist
 
               <HStack justifyContent="space-between">
                 <Text fontSize="sm">
-                  {drop.participants?.length || 0} / {drop.maxParticipants || '∞'} joined
+                  {getParticipantsCount(drop.id)} / {drop.maxParticipants || '∞'} joined
                 </Text>
                 <Button
                   colorScheme="red"

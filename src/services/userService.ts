@@ -1,7 +1,8 @@
 import { 
   doc, 
   updateDoc, 
-  getDoc 
+  getDoc, 
+  setDoc
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';

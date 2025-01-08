@@ -1,130 +1,139 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { 
-  createUserWithEmailAndPassword, 
-  signInWithEmailAndPassword, 
-  signOut, 
-  onAuthStateChanged,
-  User as FirebaseUser
-} from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { UserProfile, createDefaultUserProfile } from '../types';
+import { UserProfile } from '../types';
+import { Timestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: UserProfile | null;
   loading: boolean;
-  error: string | null;
-  signup: (email: string, password: string) => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  error: Error | null;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
+  isAdmin: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const defaultUserProfile = (user: User): UserProfile => ({
+  id: user.uid,
+  uid: user.uid,
+  name: user.displayName || 'New User',
+  email: user.email || '',
+  displayName: user.displayName || 'New User',
+  photoURL: user.photoURL || '',
+  interests: [],
+  cuisines: [],
+  cuisinePreferences: [],
+  location: '',
+  bio: '',
+  avatar: '',
+  isAdmin: false,
+  tempDisableAdmin: false,
+  registeredDrops: [],
+  profileComplete: false,
+  createdAt: Timestamp.now(),
+  updatedAt: Timestamp.now(),
+  streak: 0,
+  totalMatches: 0,
+  progress: 0,
+  connections: 0,
+  completedChallenges: [],
+  meetingPreference: '',
+  priceRange: ''
+});
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchUserProfile = async (firebaseUser: FirebaseUser): Promise<UserProfile> => {
-    const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-    if (userDoc.exists()) {
-      return userDoc.data() as UserProfile;
-    }
-
-    const userProfile = createDefaultUserProfile({
-      uid: firebaseUser.uid,
-      email: firebaseUser.email || '',
-      displayName: firebaseUser.email?.split('@')[0] || 'New User',
-    });
-
-    await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
-    return userProfile;
-  };
-
-  const signup = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await createUserWithEmailAndPassword(auth, email, password);
-      const userProfile = await fetchUserProfile(result.user);
-      setUser(userProfile);
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const login = async (email: string, password: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      await signOut(auth);
-      setUser(null);
-    } catch (err: any) {
-      setError(err.message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    console.log('AuthProvider mounted');
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log('Auth state changed:', firebaseUser?.email);
+      setLoading(true);
       try {
-        setLoading(true);
         if (firebaseUser) {
-          const userProfile = await fetchUserProfile(firebaseUser);
-          setUser(userProfile);
+          const userProfileRef = doc(db, 'users', firebaseUser.uid);
+          const userProfileSnap = await getDoc(userProfileRef);
+          
+          if (userProfileSnap.exists()) {
+            const profile = userProfileSnap.data() as UserProfile;
+            setUser(profile);
+            setIsAdmin(profile.isAdmin || false);
+          } else {
+            const newProfile = defaultUserProfile(firebaseUser);
+            await setDoc(userProfileRef, newProfile);
+            setUser(newProfile);
+            setIsAdmin(false);
+          }
         } else {
           setUser(null);
+          setIsAdmin(false);
         }
-      } catch (err: any) {
-        console.error('Auth state change error:', err);
-        setError(err.message);
+      } catch (error) {
+        console.error('Error in auth state change:', error);
+        setError(error as Error);
       } finally {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
+
+  const login = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      const { user: firebaseUser } = result;
+
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const userDoc = await getDoc(userRef);
+
+      if (!userDoc.exists()) {
+        const newUser: UserProfile = defaultUserProfile(firebaseUser);
+        await setDoc(userRef, newUser);
+        setUser(newUser);
+      }
+    } catch (err) {
+      console.error('Error logging in:', err);
+      setError(err instanceof Error ? err : new Error('Login error'));
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setUser(null);
+      setIsAdmin(false);
+    } catch (err) {
+      console.error('Error logging out:', err);
+      setError(err instanceof Error ? err : new Error('Logout error'));
+    }
+  };
 
   const value = {
     user,
     loading,
     error,
-    signup,
     login,
     logout,
+    isAdmin
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-};
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
-
-export default AuthContext;
+}

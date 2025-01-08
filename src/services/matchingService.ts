@@ -1,232 +1,207 @@
 import { 
   collection, 
   doc, 
+  getDoc, 
   getDocs, 
   query, 
   where, 
-  addDoc, 
-  updateDoc, 
-  Timestamp 
+  writeBatch, 
+  Timestamp,
+  setDoc,
+  updateDoc,
+  documentId
 } from 'firebase/firestore';
 import { db } from '../firebase';
-import { UserProfile, Drop, Match, createDefaultMatch } from '../types';
+import { 
+  Drop, 
+  UserProfile, 
+  Match, 
+  DropParticipants, 
+  DropMatches 
+} from '../types';
 
-interface MatchScore {
-  userId: string;
-  score: number;
-  commonInterests: string[];
-  commonCuisines: string[];
-}
+// Calculate compatibility score between two users
+export const calculateMatchScore = async (
+  user1Id: string, 
+  user2Id: string
+): Promise<number> => {
+  // Fetch user profiles
+  const user1Ref = doc(db, 'users', user1Id);
+  const user2Ref = doc(db, 'users', user2Id);
+  
+  const [user1Snap, user2Snap] = await Promise.all([
+    getDoc(user1Ref),
+    getDoc(user2Ref)
+  ]);
 
-export const generateDropMatches = async (dropId: string): Promise<Match[]> => {
+  const user1 = user1Snap.data() as UserProfile;
+  const user2 = user2Snap.data() as UserProfile;
+
+  // Calculate compatibility based on interests and cuisines
+  let score = 0;
+  const commonInterests = user1.interests?.filter(
+    interest => user2.interests?.includes(interest)
+  ) || [];
+  const commonCuisines = user1.cuisines?.filter(
+    cuisine => user2.cuisines?.includes(cuisine)
+  ) || [];
+
+  // Score calculation logic
+  score += commonInterests.length * 10;
+  score += commonCuisines.length * 15;
+
+  return score;
+};
+
+// Calculate compatibility score between users using their profiles
+const calculateMatchScoreFromProfiles = (
+  user1Profile: UserProfile,
+  user2Profile: UserProfile
+): number => {
+  let score = 0;
+  const commonInterests = user1Profile.interests?.filter(
+    interest => user2Profile.interests?.includes(interest)
+  ) || [];
+  const commonCuisines = user1Profile.cuisines?.filter(
+    cuisine => user2Profile.cuisines?.includes(cuisine)
+  ) || [];
+
+  score += commonInterests.length * 10;
+  score += commonCuisines.length * 15;
+
+  return score;
+};
+
+// Generate matches for a specific drop
+export const generateDropMatches = async (dropId: string): Promise<void> => {
   try {
-    // Fetch drop details
-    const dropsRef = collection(db, 'drops');
-    const usersRef = collection(db, 'users');
-
-    // Fetch all users registered for this drop
-    const registeredUsersQuery = query(usersRef, where('registeredDrops', 'array-contains', dropId));
-    const registeredUsersSnapshot = await getDocs(registeredUsersQuery);
+    console.log('Starting match generation for drop:', dropId);
     
-    const registeredUsers: UserProfile[] = [];
-    registeredUsersSnapshot.forEach((doc) => {
-      registeredUsers.push(doc.data() as UserProfile);
+    // Fetch drop and participants in parallel
+    const [dropSnap, participantsSnap] = await Promise.all([
+      getDoc(doc(db, 'drops', dropId)),
+      getDoc(doc(db, 'dropParticipants', dropId))
+    ]);
+
+    if (!dropSnap.exists()) {
+      console.error('Drop not found:', dropId);
+      throw new Error('Drop not found');
+    }
+    if (!participantsSnap.exists()) {
+      console.error('No participants found for drop:', dropId);
+      throw new Error('No participants found');
+    }
+
+    const drop = dropSnap.data() as Drop;
+    const participantsData = participantsSnap.data() as DropParticipants;
+    console.log('Found drop and participants');
+
+    // Get all participant IDs
+    const participantIds = Object.keys(participantsData.participants);
+    console.log('Processing participants:', participantIds);
+
+    // Batch get all user profiles at once
+    const userRefs = participantIds.map(id => doc(db, 'users', id));
+    const userSnaps = await getDocs(query(
+      collection(db, 'users'),
+      where(documentId(), 'in', participantIds)
+    ));
+    
+    // Create a map of user profiles for quick access
+    const userProfiles = new Map<string, UserProfile>();
+    userSnaps.forEach(snap => {
+      userProfiles.set(snap.id, snap.data() as UserProfile);
     });
 
-    // Calculate match scores
-    const matchScores: MatchScore[] = [];
-    for (let i = 0; i < registeredUsers.length; i++) {
-      const user1 = registeredUsers[i];
-      
-      for (let j = i + 1; j < registeredUsers.length; j++) {
-        const user2 = registeredUsers[j];
+    // Prepare matches document
+    const dropMatches: DropMatches = {
+      dropId: dropId,
+      dropName: drop.title,
+      matches: {},
+      totalMatches: 0
+    };
+
+    // Generate matches using cached profiles
+    for (let i = 0; i < participantIds.length; i++) {
+      for (let j = i + 1; j < participantIds.length; j++) {
+        const user1Id = participantIds[i];
+        const user2Id = participantIds[j];
+
+        const user1Profile = userProfiles.get(user1Id);
+        const user2Profile = userProfiles.get(user2Id);
+
+        if (!user1Profile || !user2Profile) continue;
+
+        // Calculate match score using cached profiles
+        const compatibility = calculateMatchScoreFromProfiles(user1Profile, user2Profile);
         
-        const commonInterests = user1.interests.filter(
-          interest => user2.interests.includes(interest)
-        );
-        
-        const commonCuisines = user1.cuisinePreferences.filter(
-          cuisine => user2.cuisinePreferences.includes(cuisine)
-        );
-        
-        const score = calculateCompatibilityScore(
-          commonInterests.length, 
-          commonCuisines.length
-        );
-        
-        matchScores.push({
-          userId: user1.uid,
-          score,
-          commonInterests,
-          commonCuisines
-        });
+        // Create match if score is above threshold
+        if (compatibility > 0) {
+          const matchId = `${user1Id}_${user2Id}`;
+          const commonInterests = user1Profile.interests?.filter(
+            interest => user2Profile.interests?.includes(interest)
+          ) || [];
+          const commonCuisines = user1Profile.cuisines?.filter(
+            cuisine => user2Profile.cuisines?.includes(cuisine)
+          ) || [];
+
+          dropMatches.matches[matchId] = {
+            participants: {
+              [user1Id]: {
+                name: participantsData.participants[user1Id].name,
+                profileId: user1Id
+              },
+              [user2Id]: {
+                name: participantsData.participants[user2Id].name,
+                profileId: user2Id
+              }
+            },
+            compatibility,
+            commonInterests,
+            commonCuisines,
+            status: 'pending',
+            createdAt: Timestamp.now()
+          };
+          dropMatches.totalMatches++;
+        }
       }
     }
 
-    // Sort and select best matches
-    const matches: Match[] = [];
-    const usedUsers = new Set<string>();
-
-    matchScores.sort((a, b) => b.score - a.score);
-
-    matchScores.forEach((matchScore, index) => {
-      if (!usedUsers.has(matchScore.userId)) {
-        const bestMatchIndex = matchScores.findIndex(
-          (m, idx) => 
-            idx > index && 
-            m.userId !== matchScore.userId && 
-            !usedUsers.has(m.userId)
-        );
-
-        if (bestMatchIndex !== -1) {
-          const bestMatch = matchScores[bestMatchIndex];
-          
-          const match = createDefaultMatch({
-            users: [matchScore.userId, bestMatch.userId],
-            dropId,
-            commonInterests: bestMatch.commonInterests,
-            commonCuisines: bestMatch.commonCuisines,
-            compatibility: bestMatch.score
-          });
-
-          matches.push(match);
-          usedUsers.add(matchScore.userId);
-          usedUsers.add(bestMatch.userId);
-        }
-      }
-    });
-
-    // Update drop with match status
-    await updateDoc(doc(db, 'drops', dropId), {
-      status: 'matched',
-    });
-
-    return matches;
-  } catch (error) {
-    console.error('Error generating drop matches:', error);
-    return [];
-  }
-};
-
-export const createMatch = async (
-  users: string[], 
-  dropId: string, 
-  commonInterests: string[], 
-  commonCuisines: string[]
-): Promise<Match> => {
-  try {
-    const matchData = createDefaultMatch({
-      users,
-      dropId,
-      commonInterests,
-      commonCuisines,
-      compatibility: calculateCompatibility(commonInterests, commonCuisines),
-      meetingDetails: {
-        location: 'TBD',
-        time: Timestamp.now()
-      }
-    });
-
-    const matchRef = await addDoc(collection(db, 'matches'), matchData);
-    return { ...matchData, id: matchRef.id };
-  } catch (error) {
-    console.error('Error creating match:', error);
-    throw error;
-  }
-};
-
-const calculateCompatibility = (
-  commonInterests: string[], 
-  commonCuisines: string[]
-): number => {
-  // Simple compatibility calculation
-  const interestWeight = 0.6;
-  const cuisineWeight = 0.4;
-
-  const interestScore = commonInterests.length * 10;
-  const cuisineScore = commonCuisines.length * 10;
-
-  return Math.min(
-    (interestScore * interestWeight + cuisineScore * cuisineWeight), 
-    100
-  );
-};
-
-const calculateCompatibilityScore = (
-  commonInterestsCount: number,
-  commonCuisinesCount: number,
-  INTEREST_WEIGHT = 0.6,
-  CUISINE_WEIGHT = 0.4,
-  PRICE_WEIGHT = 0
-): number => {
-  const interestScore = commonInterestsCount * 10;
-  const cuisineScore = commonCuisinesCount * 10;
-  const priceScore = 0; // Placeholder for future price compatibility
-
-  return (
-    interestScore * INTEREST_WEIGHT + 
-    cuisineScore * CUISINE_WEIGHT + 
-    priceScore * PRICE_WEIGHT
-  ) * 100; // Convert to percentage
-};
-
-export const findPotentialMatches = async (
-  user: UserProfile, 
-  drop: Drop
-): Promise<UserProfile[]> => {
-  try {
-    const usersRef = collection(db, 'users');
-    const q = query(
-      usersRef, 
-      where('uid', '!=', user.uid),
-      where('location', '==', user.location)
-    );
-
-    const querySnapshot = await getDocs(q);
-    const potentialMatches: UserProfile[] = [];
-
-    querySnapshot.forEach((doc) => {
-      const potentialMatch = doc.data() as UserProfile;
-      
-      // Basic matching logic
-      const commonInterests = user.interests.filter(
-        interest => potentialMatch.interests.includes(interest)
-      );
-
-      const commonCuisines = user.cuisinePreferences.filter(
-        cuisine => potentialMatch.cuisinePreferences.includes(cuisine)
-      );
-
-      if (commonInterests.length > 0 || commonCuisines.length > 0) {
-        potentialMatches.push(potentialMatch);
-      }
-    });
-
-    return potentialMatches;
-  } catch (error) {
-    console.error('Error finding potential matches:', error);
-    return [];
-  }
-};
-
-export const updateMatchDetails = async (
-  matchId: string, 
-  meetingDetails: { 
-    location?: string | null; 
-    time?: Timestamp | null; 
-  }
-): Promise<void> => {
-  try {
-    const matchRef = doc(db, 'matches', matchId);
+    // Write matches and update drop status in a single batch
+    const batch = writeBatch(db);
+    const matchesRef = doc(db, 'dropMatches', dropId);
     
-    await updateDoc(matchRef, {
-      meetingDetails: {
-        location: meetingDetails.location || 'TBD',
-        time: meetingDetails.time || Timestamp.now()
-      }
-    });
+    batch.set(matchesRef, dropMatches);
+    batch.update(doc(db, 'drops', dropId), { status: 'matched' });
+    
+    await batch.commit();
+    console.log('Successfully wrote matches and updated drop status');
+
   } catch (error) {
-    console.error('Error updating match details:', error);
+    console.error('Error in generateDropMatches:', error);
     throw error;
   }
+};
+
+// Get matches for a specific drop
+export const getDropMatches = async (dropId: string): Promise<DropMatches | null> => {
+  const matchesRef = doc(db, 'dropMatches', dropId);
+  const matchesSnap = await getDoc(matchesRef);
+  
+  return matchesSnap.exists() 
+    ? matchesSnap.data() as DropMatches 
+    : null;
+};
+
+// Get matches for a specific user
+export const getUserMatches = async (userId: string): Promise<DropMatches[]> => {
+  // Query all drop matches where the user is a participant
+  const matchesQuery = query(
+    collection(db, 'dropMatches'),
+    where(`matches.*.participants.${userId}`, '!=', null)
+  );
+
+  const matchesSnap = await getDocs(matchesQuery);
+  
+  return matchesSnap.docs.map(doc => doc.data() as DropMatches);
 };

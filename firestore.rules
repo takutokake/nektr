@@ -1,31 +1,85 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+    // Helper function to check if a user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
+    // Helper function to check if a user is an admin
     function isAdmin() {
       return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // User profiles
-    match /users/{userId} {
-      allow read, write: if isAuthenticated();
+    // Helper function to check if a participant count is valid
+    function isValidParticipantCount(data) {
+      return ('totalParticipants' in data && 'maxParticipants' in data) ? 
+             data.totalParticipants <= data.maxParticipants : true;
     }
-    
-    // Drops
+
+    // Helper function to check if user is adding only themselves
+    function isAddingOnlySelf(existing, incoming) {
+      let existingParticipants = existing != null ? existing.participants : {};
+      let incomingParticipants = incoming.participants;
+      return existing != null ? 
+        incomingParticipants.diff(existingParticipants).addedKeys().hasOnly([request.auth.uid]) :
+        true;
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated() && 
+                    (request.auth.uid == userId || isAdmin());
+      allow write: if isAuthenticated() && 
+                    (request.auth.uid == userId || isAdmin());
+    }
+
+    // Drops Collection
     match /drops/{dropId} {
       allow read: if isAuthenticated();
-      allow update: if isAuthenticated();
+      allow update: if isAuthenticated() && 
+                   (
+                     request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['participants', 'currentParticipants']) ||
+                     (isAdmin() && request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['status', 'participants', 'currentParticipants']))
+                   );
       allow create, delete: if isAdmin();
     }
-    
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
+
+    // Drop Participants Collection
+    match /dropParticipants/{dropId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                   request.resource.data.dropId == dropId &&
+                   request.resource.data.participants[request.auth.uid] != null &&
+                   isValidParticipantCount(request.resource.data);
+      allow update: if isAuthenticated() && 
+                   request.resource.data.dropId == dropId &&
+                   request.resource.data.participants[request.auth.uid] != null &&
+                   isValidParticipantCount(request.resource.data) &&
+                   isAddingOnlySelf(resource.data, request.resource.data);
+      allow get: if isAuthenticated() && isAdmin();
+    }
+
+    // Drop Matches Collection
+    match /dropMatches/{dropId} {
+      // Allow reading matches
+      allow read: if isAuthenticated() && (
+                    (exists(/databases/$(database)/documents/dropParticipants/$(dropId)) &&
+                     get(/databases/$(database)/documents/dropParticipants/$(dropId))
+                     .data.participants[request.auth.uid] != null) ||
+                    isAdmin()
+                  );
+      
+      // Allow admins to create and update matches
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+      
+      // Allow getting matches document for match generation
+      allow get: if isAuthenticated() && isAdmin();
     }
   }
 }
