@@ -1,19 +1,20 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { ChakraProvider } from '@chakra-ui/react'
+import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './index.css'
-import { ChakraProvider } from '@chakra-ui/react'
 import { AuthProvider } from './contexts/AuthContext'
-import { BrowserRouter } from 'react-router-dom'
+import theme from './theme'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <ChakraProvider>
+    <ChakraProvider theme={theme}>
+      <BrowserRouter>
         <AuthProvider>
           <App />
         </AuthProvider>
-      </ChakraProvider>
-    </BrowserRouter>
+      </BrowserRouter>
+    </ChakraProvider>
   </React.StrictMode>,
 )

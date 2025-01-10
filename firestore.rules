@@ -8,9 +8,7 @@ service cloud.firestore {
 
     // Helper function to check if a user is an admin
     function isAdmin() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
     // Helper function to check if a participant count is valid
@@ -28,12 +26,34 @@ service cloud.firestore {
         true;
     }
 
+    // Helper function to check if user is involved in a match
+    function isInvolvedInMatch(matchId) {
+      return matchId.matches('^.*_' + request.auth.uid + '_.*$') || 
+             matchId.matches('^.*_.*_' + request.auth.uid + '$');
+    }
+
     // Users Collection
     match /users/{userId} {
       allow read: if isAuthenticated() && 
                     (request.auth.uid == userId || isAdmin());
       allow write: if isAuthenticated() && 
                     (request.auth.uid == userId || isAdmin());
+
+      // User notifications subcollection
+      match /notifications/{notificationId} {
+        // Allow read for the user's own notifications
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+        
+        // Allow write only for:
+        // 1. Admin creating match notifications
+        // 2. User updating their own notification status
+        allow write: if isAuthenticated() && (
+          isAdmin() || 
+          (request.auth.uid == userId && 
+           request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['read', 'actionTaken', 'matchDetails.status']))
+        );
+      }
     }
 
     // Drops Collection
@@ -80,6 +100,13 @@ service cloud.firestore {
       
       // Allow getting matches document for match generation
       allow get: if isAuthenticated() && isAdmin();
+    }
+
+    // Matches Collection
+    match /matches/{matchId} {
+      allow read: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
+      allow create: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
+      allow update: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
     }
   }
 }

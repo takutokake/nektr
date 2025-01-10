@@ -121,6 +121,9 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
       totalMatches: 0
     };
 
+    // Prepare batch for all operations
+    const batch = writeBatch(db);
+
     // Generate matches using cached profiles
     for (let i = 0; i < participantIds.length; i++) {
       for (let j = i + 1; j < participantIds.length; j++) {
@@ -145,7 +148,7 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
             cuisine => user2Profile.cuisines?.includes(cuisine)
           ) || [];
 
-          dropMatches.matches[matchId] = {
+          const matchData = {
             participants: {
               [user1Id]: {
                 name: participantsData.participants[user1Id].name,
@@ -159,23 +162,62 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
             compatibility,
             commonInterests,
             commonCuisines,
-            status: 'pending',
+            status: 'pending' as const,
             createdAt: Timestamp.now()
           };
+
+          dropMatches.matches[matchId] = matchData;
           dropMatches.totalMatches++;
+
+          // Create notifications for both users
+          const createNotificationForUser = (userId: string, matchedUserId: string, matchedUserName: string) => {
+            const notificationRef = doc(collection(db, 'users', userId, 'notifications'));
+            
+            // Ensure we have valid cuisine data
+            const primaryCuisine = commonCuisines[0] || 'Various';
+            const recommendedCuisine = commonCuisines.length > 1 ? commonCuisines[1] : null;
+            
+            const cuisineMatch = {
+              preference: primaryCuisine,
+              ...(recommendedCuisine && { recommendation: recommendedCuisine })
+            };
+
+            const notification = {
+              type: 'match',
+              title: 'New Match Found!',
+              message: `You have been matched with ${matchedUserName} for ${drop.title}!`,
+              read: false,
+              createdAt: Timestamp.now(),
+              actionTaken: false,
+              matchDetails: {
+                matchedUserId: matchedUserId,
+                matchedUserName: matchedUserName,
+                dropId: dropId,
+                dropTitle: drop.title,
+                cuisineMatch,
+                status: 'pending',
+                matchTime: Timestamp.now()
+              }
+            };
+
+            batch.set(notificationRef, notification);
+          };
+
+          // Create notifications for both users
+          createNotificationForUser(user1Id, user2Id, user2Profile.name || 'Anonymous');
+          createNotificationForUser(user2Id, user1Id, user1Profile.name || 'Anonymous');
         }
       }
     }
 
-    // Write matches and update drop status in a single batch
-    const batch = writeBatch(db);
+    // Write matches and update drop status in the batch
     const matchesRef = doc(db, 'dropMatches', dropId);
-    
     batch.set(matchesRef, dropMatches);
     batch.update(doc(db, 'drops', dropId), { status: 'matched' });
     
+    // Commit all changes (matches, notifications, and drop status update)
     await batch.commit();
-    console.log('Successfully wrote matches and updated drop status');
+    console.log('Successfully wrote matches, notifications, and updated drop status');
 
   } catch (error) {
     console.error('Error in generateDropMatches:', error);
