@@ -3,10 +3,11 @@ export interface MatchDetails {
   matchedUserName: string;
   dropId: string;
   dropTitle: string;
-  cuisineMatch: {
+  cuisineMatch?: {
     preference: string;
     recommendation?: string;
   };
+  commonInterests: string[];
   status: 'pending' | 'accepted' | 'declined';
   matchTime: Date;
 }

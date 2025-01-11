@@ -25,6 +25,7 @@ import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { User, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
+import { UserProfile } from '../types';
 
 const INTERESTS = [
   'Technology', 'Arts', 'Sports', 'Music', 'Travel', 
@@ -50,12 +51,16 @@ const MEETING_PREFERENCES = [
 ];
 
 interface ProfileCreationProps {
-  user: User;
+  user: User | UserProfile;
   onComplete?: () => void;
 }
 
 const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) => {
-  const [displayName, setDisplayName] = useState('');
+  const [displayName, setDisplayName] = useState(
+    (user as UserProfile).displayName || 
+    (user as User).displayName || 
+    ''
+  );
   const [location, setLocation] = useState('');
   const [priceRange, setPriceRange] = useState('');
   const [interests, setInterests] = useState<string[]>([]);
@@ -105,23 +110,38 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     try {
       // Prepare user profile data
       const profileData = {
-        uid: user.uid,
-        email: user.email || '',
+        uid: (user as User).uid || (user as UserProfile).uid,
+        email: (user as User).email || (user as UserProfile).email || '',
         displayName,
-        location,
-        priceRange,
-        meetingPreference,
+        name: displayName,
+        photoURL: (user as User).photoURL || (user as UserProfile).photoURL || '',
         interests, 
         cuisinePreferences, 
+        location,
+        meetingPreference,
+        priceRange,
+        cuisines: [],
+        bio: '',
+        avatar: '',
+        profilePicture: '',
+        isAdmin: false,
+        tempDisableAdmin: false,
+        registeredDrops: [],
+        profileComplete: true,
         createdAt: Timestamp.now(),
-        points: 0,
+        updatedAt: Timestamp.now(),
         streak: 0,
+        totalMatches: 0,
+        progress: 0,
+        connections: 0,
+        completedChallenges: [],
         badges: [],
-        matches: []
+        matches: [],
+        id: (user as User).uid || (user as UserProfile).uid
       };
 
       // Save profile to Firestore
-      await setDoc(doc(db, 'users', user.uid), profileData);
+      await setDoc(doc(db, 'users', (user as User).uid || (user as UserProfile).uid), profileData);
 
       toast({
         title: 'Profile Created',

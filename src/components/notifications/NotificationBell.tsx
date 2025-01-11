@@ -42,8 +42,28 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const renderMatchNotification = (notification: Notification) => {
+    console.error('FULL Notification Object:', {
+      notification: JSON.stringify(notification, null, 2)
+    });
+
     const { matchDetails } = notification;
     if (!matchDetails) return null;
+
+    // Intelligently handle cuisine preference
+    const cuisinePreference = matchDetails.cuisineMatch?.preference === 'Various' 
+      ? matchDetails.cuisineMatch?.recommendation || 'Undecided'
+      : matchDetails.cuisineMatch?.preference;
+
+    // Intelligently handle shared interests
+    const sharedInterests = matchDetails.commonInterests && Array.isArray(matchDetails.commonInterests) && matchDetails.commonInterests.length > 0
+      ? matchDetails.commonInterests.map(interest => interest && typeof interest === 'string' ? interest.charAt(0).toUpperCase() + interest.slice(1) : 'Unknown')
+      : ['No Specific Interests'];
+
+    console.error('Shared Interests Processing:', {
+      matchDetailsCommonInterests: matchDetails.commonInterests,
+      sharedInterests: sharedInterests,
+      notificationObject: JSON.stringify(notification, null, 2)
+    });
 
     return (
       <Box>
@@ -54,12 +74,16 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
           You've been matched with {matchDetails.matchedUserName}
         </Box>
         <Box fontSize="sm" mb={2}>
-          Cuisine Preference: {matchDetails.cuisineMatch.preference}
-          {matchDetails.cuisineMatch.recommendation && (
+          Cuisine Preference: {cuisinePreference}
+          {matchDetails.cuisineMatch?.recommendation && 
+           matchDetails.cuisineMatch?.recommendation !== cuisinePreference && (
             <Box fontSize="sm" color="green.500">
-              Recommended: {matchDetails.cuisineMatch.recommendation}
+              Recommended: {matchDetails.cuisineMatch?.recommendation}
             </Box>
           )}
+        </Box>
+        <Box fontSize="sm" mb={2}>
+          Shared Interests: {sharedInterests.join(', ')}
         </Box>
         {!notification.actionTaken && (
           <HStack spacing={2} mt={2}>

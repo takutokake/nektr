@@ -50,13 +50,29 @@ export interface Match {
   updatedAt: Date;
 }
 
+export interface DropParticipant {
+  name: string;
+  profileId: string;
+  registeredAt: Timestamp;
+  status: 'pending' | 'confirmed' | 'cancelled';
+}
+
+export interface DropParticipants {
+  dropId: string;
+  dropName: string;
+  registeredAt: Timestamp;
+  participants: Record<string, DropParticipant>;
+  totalParticipants: number;
+  maxParticipants: number;
+}
+
 export interface Drop {
   id: string;
   theme: string;
   description: string;
   startTime: Date;
   endTime: Date;
-  participants: string[];
+  participants: DropParticipants;
   maxParticipants: number;
   isSpecialEvent: boolean;
 }

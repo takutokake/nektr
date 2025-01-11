@@ -21,15 +21,15 @@ const defaultUserProfile = (user: User): UserProfile => ({
   uid: user.uid,
   name: user.displayName || 'New User',
   email: user.email || '',
-  displayName: user.displayName || 'New User',
+  displayName: user.displayName || '',
   photoURL: user.photoURL || '',
   interests: [],
   cuisines: [],
   cuisinePreferences: [],
   location: '',
   bio: '',
-  avatar: '', // Added this line
-  profilePicture: '', // Added this line
+  avatar: '',
+  profilePicture: '',
   isAdmin: false,
   tempDisableAdmin: false,
   registeredDrops: [],
@@ -93,10 +93,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userRef = doc(db, 'users', firebaseUser.uid);
       const userDoc = await getDoc(userRef);
 
+      let userProfile: UserProfile;
       if (!userDoc.exists()) {
-        const newUser: UserProfile = defaultUserProfile(firebaseUser);
-        await setDoc(userRef, newUser);
-        setUser(newUser);
+        // Create a new user profile with minimal information
+        userProfile = defaultUserProfile(firebaseUser);
+        await setDoc(userRef, userProfile);
+        setUser(userProfile);
+      } else {
+        // Existing user, but might need profile completion
+        userProfile = userDoc.data() as UserProfile;
+        
+        // Ensure profile is not considered complete if key fields are missing
+        if (!userProfile.displayName || userProfile.interests.length === 0) {
+          userProfile.profileComplete = false;
+        }
+        
+        setUser(userProfile);
       }
     } catch (err) {
       console.error('Error logging in:', err);

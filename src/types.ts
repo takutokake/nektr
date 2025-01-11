@@ -52,6 +52,7 @@ export interface Match {
     location: string;
     time: Timestamp;
   };
+  cuisinePreference: string;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
   dropId: string;
@@ -191,6 +192,23 @@ export interface MatchOutcome {
 }
 
 // Default factory functions to help with initialization
+export const defaultUserProfile: UserProfile = {
+  id: '',
+  uid: '',
+  displayName: '',
+  name: '',
+  email: '',
+  gender: '',
+  age: 0,
+  location: '',
+  interests: [],
+  cuisines: [],
+  cuisinePreferences: [],
+  dietaryRestrictions: [],
+  priceRange: '',
+  socialMediaLinks: {}
+};
+
 export const createDefaultDrop = (partialDrop: Partial<Drop> = {}): Drop => ({
   id: partialDrop.id || '',
   title: partialDrop.title || 'Untitled Drop',
@@ -220,6 +238,7 @@ export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => 
     location: 'TBD',
     time: Timestamp.now(),
   },
+  cuisinePreference: partialMatch.cuisinePreference || '', // Changed to provide a default value
   createdAt: partialMatch.createdAt || Timestamp.now(),
   updatedAt: partialMatch.updatedAt,
   dropId: partialMatch.dropId || '',
@@ -256,6 +275,13 @@ export const createUserProfile = (partialUser: Partial<UserProfile>): UserProfil
   connections: partialUser.connections || 0,
   completedChallenges: partialUser.completedChallenges || [],
   meetingPreference: partialUser.meetingPreference || '',
+  priceRange: partialUser.priceRange || '',
+  cuisinePreferences: partialUser.cuisinePreferences || partialUser.cuisines || []
+});
+
+export const createPartialUser = (partialUser: Partial<UserProfile>): UserProfile => ({
+  ...defaultUserProfile,
+  ...partialUser,
   priceRange: partialUser.priceRange || '',
   cuisinePreferences: partialUser.cuisinePreferences || partialUser.cuisines || []
 });

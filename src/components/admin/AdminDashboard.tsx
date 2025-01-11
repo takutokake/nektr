@@ -698,9 +698,12 @@ export default function AdminDashboard() {
       drop.registrationDeadline.toDate() >= currentTime
     );
     
-    const pastDrops = drops.filter(drop => 
-      drop.registrationDeadline.toDate() < currentTime
-    );
+    const pastDrops = drops
+      .filter(drop => 
+        drop.registrationDeadline.toDate() < currentTime
+      )
+      .sort((a, b) => b.registrationDeadline.toDate().getTime() - a.registrationDeadline.toDate().getTime())
+      .slice(0, 10);
 
     const renderDropCard = (drop: Drop, isPastDrop: boolean = false) => (
       <Box 

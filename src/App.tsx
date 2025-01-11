@@ -5,11 +5,13 @@ import { useAuth } from './contexts/AuthContext'
 import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import AdminDashboard from './components/admin/AdminDashboard'
+import ProfileCreation from './components/ProfileCreation'
 import { Drop, UserProfile } from './types'
 import { dropsService } from './services/dropsService'
 import { db } from './firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
+import { User } from 'firebase/auth';
 
 function App() {
   const { user, loading, error, logout } = useAuth();
@@ -98,6 +100,17 @@ function App() {
 
   if (!user) {
     return <Auth />;
+  }
+
+  // Check if user needs to complete profile
+  if (!userProfile || !userProfile.displayName || userProfile.interests.length === 0) {
+    return <ProfileCreation 
+      user={user} 
+      onComplete={() => {
+        fetchUserProfile();
+        // Optionally, you can add navigation or other logic here
+      }} 
+    />;
   }
 
   return (
