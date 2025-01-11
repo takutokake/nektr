@@ -1,60 +1,471 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Box, 
-  VStack, 
-  Heading, 
-  Text, 
   Button, 
-  useToast, 
-  Spinner,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
+  Table, 
+  Thead, 
+  Tbody, 
+  Tr, 
+  Th, 
+  Td, 
+  VStack, 
+  HStack, 
+  Text, 
+  Badge, 
+  Icon,
+  Heading,
   TableContainer,
-  Flex,
+  Skeleton,
   Tabs,
   TabList,
   TabPanels,
   Tab,
   TabPanel,
-  HStack,
-  Switch,
+  Spinner,
+  Flex,
+  useColorModeValue,
   FormControl,
   FormLabel,
-  useColorModeValue,
-  Badge
+  Switch,
+  useToast,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription
 } from '@chakra-ui/react';
-import { useAuth } from '../../contexts/AuthContext';
-import { 
-  generateDropMatches, 
-  getDropMatches 
-} from '../../services/matchingService';
-import { Drop, DropMatches, DropParticipants, Match, UserProfile } from '../../types';
 import { 
   collection, 
   query, 
-  where, 
   getDocs, 
-  doc, 
+  Timestamp,
+  doc,
   getDoc,
   orderBy,
   updateDoc,
-  Timestamp 
+  DocumentData
 } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { 
+  MatchOutcome, 
+  UserProfile, 
+  Drop, 
+  DropMatches, 
+  DropParticipants 
+} from '../../types';
+import { MatchRegistrationService } from '../../services/matchRegistrationService';
+import { generateDropMatches, getDropMatches } from '../../services/matchingService';
 import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
 import AdminDrops from './AdminDrops';
 import { MatchingTest } from '../debug/MatchingTest';
+import { FaRegSadTear } from 'react-icons/fa';
+import { FiInbox } from 'react-icons/fi';
+
+const SuccessfulMatchesTable: React.FC = () => {
+  const [successfulMatches, setSuccessfulMatches] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSuccessfulMatches = async () => {
+      try {
+        setIsLoading(true);
+        const successfulMatchesRef = collection(db, 'successfulMatches');
+        const q = query(successfulMatchesRef);
+        
+        const querySnapshot = await getDocs(q);
+        const matches = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        setSuccessfulMatches(matches);
+      } catch (error) {
+        console.error('Error fetching successful matches:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchSuccessfulMatches();
+  }, []);
+
+  const tableRowBg = useColorModeValue('gray.50', 'gray.700');
+
+  if (isLoading) {
+    return (
+      <Flex justify="center" align="center" height="300px">
+        <Spinner size="xl" />
+      </Flex>
+    );
+  }
+
+  return (
+    <Box overflowX="auto">
+      <Table variant="simple">
+        <Thead>
+          <Tr>
+            <Th>Match ID</Th>
+            <Th>Drop ID</Th>
+            <Th>Participants</Th>
+            <Th>Compatibility</Th>
+            <Th>Common Interests</Th>
+            <Th>Common Cuisines</Th>
+            <Th>Matched At</Th>
+            <Th>Status</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {successfulMatches.map(match => (
+            <Tr key={match.id} bg={tableRowBg}>
+              <Td fontSize="sm">{match.id}</Td>
+              <Td fontSize="sm">{match.dropId}</Td>
+              <Td fontSize="sm">
+                {Object.entries(match.participants || {}).map(([userId, participant]: [string, any]) => (
+                  <Box key={userId}>
+                    {participant?.profile?.name || userId}
+                  </Box>
+                ))}
+              </Td>
+              <Td fontSize="sm">{match.matchDetails?.compatibility?.toFixed(2)}%</Td>
+              <Td fontSize="sm">{match.matchDetails?.commonInterests?.join(', ')}</Td>
+              <Td fontSize="sm">{match.matchDetails?.commonCuisines?.join(', ')}</Td>
+              <Td fontSize="sm">
+                {match.createdAt && format(
+                  (match.createdAt as Timestamp).toDate(), 
+                  'MMM d, yyyy HH:mm'
+                )}
+              </Td>
+              <Td>
+                <Badge 
+                  colorScheme={
+                    match.status === 'active' ? 'green' : 
+                    match.status === 'completed' ? 'blue' : 
+                    'red'
+                  }
+                >
+                  {match.status}
+                </Badge>
+              </Td>
+            </Tr>
+          ))}
+        </Tbody>
+      </Table>
+      {successfulMatches.length === 0 && (
+        <Flex justify="center" align="center" height="300px">
+          <Text>No successful matches found</Text>
+        </Flex>
+      )}
+    </Box>
+  );
+};
+
+const MatchOutcomesTable: React.FC = () => {
+  const [matchOutcomes, setMatchOutcomes] = useState<MatchOutcome[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'successful' | 'unsuccessful'>('all');
+  const [lastFetch, setLastFetch] = useState<number>(0);
+  const CACHE_DURATION = 30000; // 30 seconds
+  const MAX_RETRIES = 3;
+
+  const handleFilterChange = (newFilter: 'all' | 'successful' | 'unsuccessful') => {
+    if (filter === newFilter) return; // Don't reload if same filter
+    setFilter(newFilter);
+    setLastFetch(0); // Force a new fetch when changing filters
+    setIsLoading(true); // Show loading state immediately
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    let retryCount = 0;
+    let retryTimeout: NodeJS.Timeout;
+
+    const fetchMatchOutcomes = async () => {
+      if (!isMounted) return;
+
+      try {
+        setError(null);
+        const now = Date.now();
+        
+        if (now - lastFetch < CACHE_DURATION && matchOutcomes.length > 0) {
+          setIsLoading(false);
+          return;
+        }
+
+        const outcomes = filter === 'all' 
+          ? await MatchRegistrationService.getMatchOutcomes()
+          : await MatchRegistrationService.getMatchOutcomes(filter);
+        
+        if (!isMounted) return;
+
+        setMatchOutcomes(outcomes);
+        setLastFetch(now);
+        retryCount = 0;
+      } catch (error) {
+        if (!isMounted) return;
+        
+        console.error('Error fetching match outcomes:', error);
+        
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          console.log(`Retry attempt ${retryCount} in ${Math.pow(2, retryCount)} seconds`);
+          
+          // Clear any existing timeout
+          if (retryTimeout) {
+            clearTimeout(retryTimeout);
+          }
+          
+          // Set new timeout with exponential backoff
+          retryTimeout = setTimeout(() => {
+            if (isMounted) {
+              fetchMatchOutcomes();
+            }
+          }, 1000 * Math.pow(2, retryCount));
+        } else {
+          setError(error instanceof Error ? error.message : 'An unknown error occurred');
+          setMatchOutcomes([]);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    fetchMatchOutcomes();
+
+    return () => {
+      isMounted = false;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [filter]);
+
+  const renderFilterTabs = () => {
+    return (
+      <HStack spacing={4} mb={6}>
+        <Button
+          colorScheme={filter === 'all' ? 'blue' : 'gray'}
+          onClick={() => handleFilterChange('all')}
+          size="md"
+          variant={filter === 'all' ? 'solid' : 'outline'}
+        >
+          All Matches
+        </Button>
+        <Button
+          colorScheme={filter === 'successful' ? 'blue' : 'gray'}
+          onClick={() => handleFilterChange('successful')}
+          size="md"
+          variant={filter === 'successful' ? 'solid' : 'outline'}
+        >
+          Successful Matches
+        </Button>
+        <Button
+          colorScheme={filter === 'unsuccessful' ? 'blue' : 'gray'}
+          onClick={() => handleFilterChange('unsuccessful')}
+          size="md"
+          variant={filter === 'unsuccessful' ? 'solid' : 'outline'}
+        >
+          Unsuccessful Matches
+        </Button>
+      </HStack>
+    );
+  };
+
+  const renderParticipants = useCallback((match: MatchOutcome) => {
+    const uniqueParticipants = new Set(Object.keys(match.participants || {}));
+    
+    return Array.from(uniqueParticipants).map((userId) => {
+      const participant = match.participants[userId];
+      
+      return (
+        <Box key={userId}>
+          {participant?.profile?.displayName || 
+           participant?.profile?.name || 
+           participant?.profile?.email || 
+           userId}
+          {' '}
+          <Badge 
+            colorScheme={participant?.response === 'yes' ? 'green' : 'red'}
+            ml={2}
+          >
+            {participant?.response || 'pending'}
+          </Badge>
+        </Box>
+      );
+    });
+  }, []);
+
+  const renderMatchOutcomesTable = () => {
+    if (isLoading) {
+      return (
+        <TableContainer>
+          <Table variant="simple">
+            <Thead>
+              <Tr>
+                <Th>CREATED AT</Th>
+                <Th>DROP ID</Th>
+                <Th>PARTICIPANTS</Th>
+                <Th>STATUS</Th>
+                <Th>COMPATIBILITY</Th>
+              </Tr>
+            </Thead>
+            <Tbody>
+              {[...Array(3)].map((_, i) => (
+                <Tr key={i}>
+                  <Td><Skeleton height="20px" /></Td>
+                  <Td><Skeleton height="20px" /></Td>
+                  <Td><Skeleton height="20px" /></Td>
+                  <Td><Skeleton height="20px" /></Td>
+                  <Td><Skeleton height="20px" /></Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+        </TableContainer>
+      );
+    }
+
+    // If no match outcomes and not loading, show empty state
+    if (matchOutcomes.length === 0 && !isLoading) {
+      return (
+        <Box textAlign="center" py={10}>
+          <Icon as={FaRegSadTear} boxSize={10} color="gray.400" mb={4} />
+          <Text color="gray.500" fontSize="lg">
+            {filter === 'successful' 
+              ? 'No successful matches found'
+              : filter === 'unsuccessful'
+                ? 'No unsuccessful matches found'
+                : 'No matches found'}
+          </Text>
+        </Box>
+      );
+    }
+
+    return (
+      <TableContainer>
+        <Table variant="simple" size="sm">
+          <Thead>
+            <Tr>
+              <Th>CREATED AT</Th>
+              <Th>DROP ID</Th>
+              <Th>PARTICIPANTS</Th>
+              <Th>STATUS</Th>
+              <Th>COMPATIBILITY</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {matchOutcomes.map((match) => (
+              <Tr key={match.id}>
+                <Td fontSize="sm">
+                  {match.createdAt instanceof Timestamp 
+                    ? new Date(match.createdAt.seconds * 1000).toLocaleString()
+                    : 'Invalid Date'}
+                </Td>
+                <Td fontSize="sm">{match.dropId}</Td>
+                <Td fontSize="sm">{renderParticipants(match)}</Td>
+                <Td>
+                  <Badge
+                    colorScheme={match.status === 'successful' ? 'green' : 'red'}
+                    fontSize="sm"
+                    px={2}
+                    py={1}
+                    borderRadius="full"
+                  >
+                    {match.status === 'successful' ? 'Successful' : 'Unsuccessful'}
+                  </Badge>
+                </Td>
+                <Td fontSize="sm">
+                  {match.matchDetails?.compatibility 
+                    ? `${(match.matchDetails.compatibility * 1).toFixed(2)}%`
+                    : 'N/A'}
+                </Td>
+              </Tr>
+            ))}
+          </Tbody>
+        </Table>
+      </TableContainer>
+    );
+  };
+
+  const tableRowBg = useColorModeValue('gray.50', 'gray.700');
+
+  if (isLoading) {
+    return (
+      <Flex justify="center" align="center" height="300px">
+        <Spinner size="xl" />
+      </Flex>
+    );
+  }
+
+  if (error) {
+    return (
+      <Flex 
+        direction="column" 
+        justify="center" 
+        align="center" 
+        height="300px" 
+        p={4} 
+        textAlign="center"
+      >
+        <Text fontSize="xl" color="red.500" mb={4}>
+          Error Fetching Matches
+        </Text>
+        <Text color="gray.500">{error}</Text>
+        <Button 
+          mt={4} 
+          colorScheme="blue" 
+          onClick={() => {
+            setError(null);
+            setLastFetch(0); // Force refetch
+          }}
+        >
+          Try Again
+        </Button>
+      </Flex>
+    );
+  }
+
+  return (
+    <Box p={8}>
+      <VStack spacing={6} align="stretch">
+        <HStack justify="space-between">
+          <Heading as="h1" size="xl">Match Outcomes</Heading>
+        </HStack>
+
+        {renderFilterTabs()}
+
+        {error ? (
+          <Alert status="error">
+            <AlertIcon />
+            <AlertTitle>Error loading match outcomes</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+            <Button
+              ml={4}
+              onClick={() => {
+                setError(null);
+                setLastFetch(0); // Force a new fetch
+              }}
+            >
+              Try Again
+            </Button>
+          </Alert>
+        ) : (
+          renderMatchOutcomesTable()
+        )}
+      </VStack>
+    </Box>
+  );
+};
 
 export default function AdminDashboard() {
+  const toast = useToast();
   const [drops, setDrops] = useState<Drop[]>([]);
   const [matches, setMatches] = useState<{[dropId: string]: DropMatches}>({});
   const [loading, setLoading] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(true);
   const { user, logout } = useAuth();
-  const toast = useToast();
 
   const handleSignOut = async () => {
     try {
@@ -76,12 +487,10 @@ export default function AdminDashboard() {
       setLoading(true);
       const userRef = doc(db, 'users', user.uid);
       
-      // Update Firestore
       await updateDoc(userRef, {
         tempDisableAdmin: true
       });
       
-      // Show transition message
       toast({
         title: 'Switching to User Mode',
         description: 'Redirecting to homepage...',
@@ -89,7 +498,6 @@ export default function AdminDashboard() {
         duration: 1500,
       });
       
-      // Force state update and refresh without redirecting to auth
       setTimeout(() => {
         window.location.replace('/');
       }, 1000);
@@ -107,7 +515,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Fetch drops and their matches
   const fetchDropsList = async () => {
     try {
       setLoading(true);
@@ -122,7 +529,6 @@ export default function AdminDashboard() {
       
       setDrops(fetchedDrops);
 
-      // Fetch matches for each drop
       for (const drop of fetchedDrops) {
         await fetchDropMatchesById(drop.id);
       }
@@ -140,7 +546,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Fetch matches for a drop
   const fetchDropMatchesById = async (dropId: string) => {
     try {
       const dropMatchesData = await getDropMatches(dropId);
@@ -153,12 +558,9 @@ export default function AdminDashboard() {
       }
     } catch (error) {
       console.error(`Error fetching matches for drop ${dropId}:`, error);
-      // Don't show toast for each drop's matches fetch failure
-      // as it might spam the user if multiple drops fail
     }
   };
 
-  // Fetch participants for a drop
   const fetchDropParticipants = async (dropId: string): Promise<DropParticipants | null> => {
     try {
       const participantsRef = doc(db, 'dropParticipants', dropId);
@@ -173,10 +575,8 @@ export default function AdminDashboard() {
     }
   };
 
-  // Handle generate matches
   const handleGenerateMatches = async (drop: Drop) => {
     try {
-      // First, check if participants exist
       const participantsRef = doc(db, 'dropParticipants', drop.id);
       const participantsSnap = await getDoc(participantsRef);
       
@@ -191,9 +591,8 @@ export default function AdminDashboard() {
         return;
       }
 
-      const participantsData = participantsSnap.data() as DropParticipants;
+      const participantsData = participantsSnap.data();
       
-      // Check if there are enough participants
       if (Object.keys(participantsData.participants).length < 2) {
         toast({
           title: 'Insufficient Participants',
@@ -205,18 +604,11 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Set loading state for this specific drop
       setLoading(true);
 
-      // Generate matches
-      console.log('Starting match generation for drop:', drop.id);
       await generateDropMatches(drop.id);
-      console.log('Match generation completed');
       
-      // Fetch and update matches immediately
-      console.log('Fetching updated matches');
       const updatedMatches = await getDropMatches(drop.id);
-      console.log('Updated matches:', updatedMatches);
       
       if (updatedMatches) {
         setMatches(prev => ({
@@ -246,12 +638,10 @@ export default function AdminDashboard() {
     }
   };
 
-  // Fetch drops on component mount
   useEffect(() => {
     fetchDropsList();
   }, []);
 
-  // Render matches for a specific drop
   const renderDropMatches = (dropId: string) => {
     const dropMatches = matches[dropId];
     
@@ -264,76 +654,112 @@ export default function AdminDashboard() {
     }
 
     return (
-      <TableContainer>
-        <Table variant="simple" size="sm">
-          <Thead>
-            <Tr>
-              <Th>Participants</Th>
-              <Th>Compatibility</Th>
-              <Th>Status</Th>
-              <Th>Created</Th>
+      <Table variant="simple" size="sm">
+        <Thead>
+          <Tr>
+            <Th>Participants</Th>
+            <Th>Compatibility</Th>
+            <Th>Status</Th>
+            <Th>Created</Th>
+          </Tr>
+        </Thead>
+        <Tbody>
+          {Object.entries(dropMatches.matches).map(([matchId, match]) => (
+            <Tr key={matchId}>
+              <Td fontSize="sm">
+                {Object.values(match.participants)
+                  .map(participant => participant.name)
+                  .join(' & ')}
+              </Td>
+              <Td fontSize="sm">{match.compatibility}%</Td>
+              <Td>
+                <Badge 
+                  colorScheme={
+                    match.status === 'confirmed' ? 'green' :
+                    match.status === 'pending' ? 'yellow' :
+                    'red'
+                  }
+                >
+                  {match.status}
+                </Badge>
+              </Td>
+              <Td fontSize="sm">{match.createdAt.toDate().toLocaleDateString()}</Td>
             </Tr>
-          </Thead>
-          <Tbody>
-            {Object.entries(dropMatches.matches).map(([matchId, match]) => (
-              <Tr key={matchId}>
-                <Td>
-                  {Object.values(match.participants)
-                    .map(participant => participant.name)
-                    .join(' & ')}
-                </Td>
-                <Td>{match.compatibility}%</Td>
-                <Td>
-                  <Badge 
-                    colorScheme={
-                      match.status === 'confirmed' ? 'green' :
-                      match.status === 'pending' ? 'yellow' :
-                      'red'
-                    }
-                  >
-                    {match.status}
-                  </Badge>
-                </Td>
-                <Td>{match.createdAt.toDate().toLocaleDateString()}</Td>
-              </Tr>
-            ))}
-          </Tbody>
-        </Table>
-      </TableContainer>
+          ))}
+        </Tbody>
+      </Table>
     );
   };
 
-  // Render drops list
   const renderDrops = () => {
-    return drops.map(drop => (
+    const currentTime = new Date();
+    
+    const upcomingDrops = drops.filter(drop => 
+      drop.registrationDeadline.toDate() >= currentTime
+    );
+    
+    const pastDrops = drops.filter(drop => 
+      drop.registrationDeadline.toDate() < currentTime
+    );
+
+    const renderDropCard = (drop: Drop, isPastDrop: boolean = false) => (
       <Box 
         key={drop.id} 
         borderWidth="1px" 
         borderRadius="lg" 
         p={4} 
-        mb={4}
+        boxShadow="md"
       >
         <Flex justifyContent="space-between" alignItems="center">
-          <VStack align="start" spacing={2}>
+          <VStack align="start" spacing={2} flex="1" mr={4}>
             <Heading size="md">{drop.title}</Heading>
-            <Text>Date: {drop.startTime.toDate().toLocaleDateString()}</Text>
+            <Text>
+              {isPastDrop ? 'Registration Closed' : 'Registration Deadline'}: 
+              {drop.registrationDeadline.toDate().toLocaleDateString()}
+            </Text>
             <Text>Location: {drop.location}</Text>
           </VStack>
           <Button 
-            colorScheme="blue" 
+            colorScheme={isPastDrop ? "gray" : "blue"} 
             onClick={() => handleGenerateMatches(drop)}
+            isDisabled={loading}
           >
             Generate Matches
           </Button>
         </Flex>
         
-        {/* Matches Section */}
         <Box mt={4}>
           <Heading size="sm" mb={2}>Matches</Heading>
           {renderDropMatches(drop.id)}
         </Box>
       </Box>
-    ));
+    );
+
+    return (
+      <Flex>
+        <Box flex="1" mr={4}>
+          <Heading size="md" mb={4}>Upcoming Drops</Heading>
+          <VStack spacing={4} align="stretch">
+            {upcomingDrops.length > 0 ? (
+              upcomingDrops.map(drop => renderDropCard(drop))
+            ) : (
+              <Text color="gray.500">No upcoming drops</Text>
+            )}
+          </VStack>
+        </Box>
+
+        <Box flex="1">
+          <Heading size="md" mb={4}>Past Drops</Heading>
+          <VStack spacing={4} align="stretch">
+            {pastDrops.length > 0 ? (
+              pastDrops.map(drop => renderDropCard(drop, true))
+            ) : (
+              <Text color="gray.500">No past drops</Text>
+            )}
+          </VStack>
+        </Box>
+      </Flex>
+    );
   };
 
   if (!user || !user.isAdmin) {
@@ -370,6 +796,8 @@ export default function AdminDashboard() {
           <TabList>
             <Tab>Drops</Tab>
             <Tab>Matches</Tab>
+            <Tab>Match Outcomes</Tab>
+            <Tab>Successful Matches</Tab>
             <Tab>Create Drop</Tab>
             <Tab>Test Matching</Tab>
           </TabList>
@@ -377,7 +805,7 @@ export default function AdminDashboard() {
           <TabPanels>
             <TabPanel>
               <VStack spacing={4} align="stretch">
-                <Heading size="md">Upcoming Drops</Heading>
+                <Heading size="md">Drops</Heading>
                 {loading ? (
                   <Flex justify="center" align="center" height="200px">
                     <Spinner />
@@ -426,6 +854,14 @@ export default function AdminDashboard() {
                   </Tbody>
                 </Table>
               </VStack>
+            </TabPanel>
+
+            <TabPanel>
+              <MatchOutcomesTable />
+            </TabPanel>
+
+            <TabPanel>
+              <SuccessfulMatchesTable />
             </TabPanel>
 
             <TabPanel>

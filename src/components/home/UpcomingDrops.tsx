@@ -80,7 +80,7 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
     setJoiningDrops(prev => new Set(prev).add(drop.id));
 
     try {
-      const dropRef = doc(db, 'drops', drop.id);
+      const batch = writeBatch(db);
       const participantsRef = doc(db, 'dropParticipants', drop.id);
       
       // Get user profile for additional info
@@ -93,84 +93,57 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
       const participantsData = participantsSnap.exists() 
         ? participantsSnap.data() as DropParticipants 
         : {
+            id: drop.id,
             dropId: drop.id,
             dropName: drop.title,
+            registeredAt: Timestamp.now(),
             participants: {},
             totalParticipants: 0,
-            maxParticipants: drop.maxParticipants || 10
+            maxParticipants: drop.maxParticipants
           };
 
-      // Check if user is already joined
-      if (participantsData.participants[currentUser.uid]) {
-        toast({
-          title: "Already joined",
-          description: "You're already part of this drop",
-          status: "info",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
+      // Check if the drop is full
+      if (participantsData.totalParticipants >= participantsData.maxParticipants) {
+        throw new Error('Drop is full');
       }
 
-      // Check if drop is full
-      if (participantsData.totalParticipants >= (drop.maxParticipants || 10)) {
-        toast({
-          title: "Drop is full",
-          description: "This drop has reached its maximum capacity",
-          status: "error",
-          duration: 3000,
-          isClosable: true,
-        });
-        return;
-      }
-
-      // Prepare batch write
-      const batch = writeBatch(db);
-
-      // Update participants document
-      const newParticipant = {
-        name: userData?.name || currentUser.email || 'Anonymous',
-        registeredAt: Timestamp.now(),
-        status: 'pending' as const,
-        profile: {
-          interests: userData?.interests || [],
-          cuisines: userData?.cuisines || []
-        }
+      // Add the user to participants
+      const updatedParticipants = {
+        ...participantsData,
+        participants: {
+          ...participantsData.participants,
+          [currentUser.uid]: {
+            name: userData?.name || currentUser.email || 'Anonymous',
+            profileId: currentUser.uid,
+            registeredAt: Timestamp.now(),
+            status: 'pending'
+          }
+        },
+        totalParticipants: participantsData.totalParticipants + 1
       };
 
-      participantsData.participants[currentUser.uid] = newParticipant;
-      participantsData.totalParticipants = Object.keys(participantsData.participants).length;
-
-      // Set/update the participants document
-      batch.set(participantsRef, participantsData);
-
-      // Update drop participants array
-      batch.update(dropRef, {
-        participants: drop.participants ? [...drop.participants, currentUser.uid] : [currentUser.uid],
-        currentParticipants: participantsData.totalParticipants
-      });
-
-      // Commit the batch
+      // Update the participants document
+      batch.set(participantsRef, updatedParticipants);
       await batch.commit();
 
+      if (onDropJoin) {
+        onDropJoin(drop.id);
+      }
+
       toast({
-        title: "Successfully joined!",
-        description: "You've been added to the drop",
+        title: "Success",
+        description: "You've successfully joined the drop!",
         status: "success",
         duration: 3000,
         isClosable: true,
       });
-
-      // Optional callback
-      onDropJoin?.(drop.id);
     } catch (error) {
       console.error('Error joining drop:', error);
-      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
-        title: "Error joining drop",
-        description: `Failed to join: ${errorMessage}`,
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to join drop",
         status: "error",
-        duration: 5000,
+        duration: 3000,
         isClosable: true,
       });
     } finally {
@@ -181,7 +154,7 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
       });
       setSelectedDrop(null);
     }
-  }, [user, toast, onDropJoin, joiningDrops]);
+  }, [user, joiningDrops, toast, onDropJoin]);
 
   return { joiningDrops, selectedDrop, joinDrop };
 };
@@ -189,32 +162,31 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
 // Create a custom hook for time tracking
 const useDropTimers = (drops: Drop[]) => {
   const [timeLeft, setTimeLeft] = useState<{ [key: string]: string }>({});
-
-  const futureDrops = useMemo(() => 
-    drops
-      .filter(drop => drop.startTime.toDate() > new Date())
-      .sort((a, b) => a.startTime.toDate().getTime() - b.startTime.toDate().getTime()),
-    [drops]
-  );
+  const timerRef = useRef<NodeJS.Timeout>();
 
   useEffect(() => {
     const updateTimers = () => {
-      const newTimes: { [key: string]: string } = {};
-      futureDrops.forEach(drop => {
-        newTimes[drop.id] = calculateTimeLeft(drop.startTime);
+      const newTimeLeft: { [key: string]: string } = {};
+      drops.forEach(drop => {
+        newTimeLeft[drop.id] = calculateTimeLeft(drop.startTime);
       });
-      setTimeLeft(newTimes);
+      setTimeLeft(newTimeLeft);
     };
 
-    // Initial calculation
     updateTimers();
+    timerRef.current = setInterval(updateTimers, 1000);
 
-    // Set up interval
-    const timer = setInterval(updateTimers, 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [drops]);
 
-    // Cleanup
-    return () => clearInterval(timer);
-  }, [futureDrops]);
+  const futureDrops = useMemo(() => 
+    drops.filter(drop => drop.startTime.toDate() > new Date()), 
+    [drops]
+  );
 
   return { timeLeft, futureDrops };
 };
@@ -235,8 +207,39 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
   // Custom hooks - always called in the same order
   const { timeLeft, futureDrops } = useDropTimers(drops);
   const { joiningDrops, selectedDrop, joinDrop } = useDropJoin(drops, onDropJoin);
+  const [participants, setParticipants] = useState<{ [dropId: string]: DropParticipants }>({});
 
-  // Render logic
+  // Fetch participants for each drop
+  useEffect(() => {
+    const fetchParticipants = async () => {
+      try {
+        const participantsPromises = drops.map(async (drop) => {
+          const participantsRef = doc(db, 'dropParticipants', drop.id);
+          const participantsSnap = await getDoc(participantsRef);
+          
+          if (participantsSnap.exists()) {
+            return { 
+              [drop.id]: participantsSnap.data() as DropParticipants 
+            };
+          }
+          return {};
+        });
+
+        const participantsResults = await Promise.all(participantsPromises);
+        const newParticipants = participantsResults.reduce((acc, curr) => ({
+          ...acc,
+          ...curr
+        }), {});
+
+        setParticipants(newParticipants);
+      } catch (error) {
+        console.error('Error fetching drop participants:', error);
+      }
+    };
+
+    fetchParticipants();
+  }, [drops]);
+
   if (futureDrops.length === 0) {
     return (
       <Box 
@@ -249,7 +252,7 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
       >
         <VStack align="stretch" spacing={4}>
           <Heading size="md">Next Drop</Heading>
-          <Text color="gray.600">No upcoming drops available</Text>
+          <Text color={textColor}>No upcoming drops available</Text>
         </VStack>
       </Box>
     );
@@ -270,22 +273,22 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
         >
           {/* Header Section */}
           <Box 
-            bg={index === 0 ? useColorModeValue('brand.50', 'brand.900') : useColorModeValue('white', 'gray.800')} 
-            p={4} 
+            bg={index === 0 ? useColorModeValue('blue.50', 'blue.900') : bgColor} 
+            p={6} 
             borderBottom="1px" 
             borderColor={borderColor}
           >
             <Badge 
-              colorScheme={index === 0 ? "blue" : "brand"} 
-              fontSize="sm"
-              px={3}
-              py={1}
+              colorScheme="blue" 
+              fontSize="xs"
+              px={2}
+              py={0.5}
               borderRadius="full"
-              mb={2}
+              mb={1}
             >
-              {index === 0 ? 'Next Drop' : `Upcoming Drop ${index + 1}`}
+              {index === 0 ? 'NEXT DROP' : `Upcoming Drop ${index + 1}`}
             </Badge>
-            <Heading size="lg" mb={2}>
+            <Heading size="lg" mb={1} color={headingColor}>
               {drop.title}
             </Heading>
             <Text fontSize="md" color={textColor}>
@@ -294,100 +297,92 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
           </Box>
 
           {/* Content Section */}
-          <Box p={6}>
+          <Box p={4}>
             <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
               {/* Left Column - Details */}
-              <VStack align="start" spacing={4}>
-                <Box width="full">
-                  <Text fontWeight="bold" fontSize="lg" mb={3}>
-                    Drop Details
-                  </Text>
-                  <VStack align="start" spacing={3}>
-                    <HStack>
-                      <Icon as={FaMapMarkerAlt} color="red.500" />
-                      <Text fontWeight="medium">Location:</Text>
-                      <Text>{drop.location || 'USC'}</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon as={FaMoneyBillWave} color="green.500" />
-                      <Text fontWeight="medium">Price Range:</Text>
-                      <Text>{drop.priceRange || '$$'}</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon as={FaCalendarAlt} color="blue.500" />
-                      <Text fontWeight="medium">Date:</Text>
-                      <Text>{formatDate(drop.startTime)}</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon as={FaClock} color="purple.500" />
-                      <Text fontWeight="medium">Time:</Text>
-                      <Text>{formatTime(drop.startTime)}</Text>
-                    </HStack>
-                    <HStack>
-                      <Icon as={FaCalendarCheck} color="teal.500" />
-                      <Text fontWeight="medium">Registration Deadline:</Text>
-                      <Text>{formatDate(drop.registrationDeadline)} at {formatTime(drop.registrationDeadline)}</Text>
-                    </HStack>
-                  </VStack>
-                </Box>
-              </VStack>
+              <Box>
+                <Heading size="md" mb={3} color={headingColor}>Drop Details</Heading>
+                <VStack align="stretch" spacing={3}>
+                  <HStack>
+                    <Icon as={FaMapMarkerAlt} color="red.500" boxSize={4} />
+                    <Text fontWeight="medium" fontSize="md">Location:</Text>
+                    <Text fontSize="md">{drop.location}</Text>
+                  </HStack>
+                  
+                  <HStack>
+                    <Icon as={FaMoneyBillWave} color="green.500" boxSize={4} />
+                    <Text fontWeight="medium" fontSize="md">Price Range:</Text>
+                    <Text fontSize="md">${drop.priceRange || 'Free'}</Text>
+                  </HStack>
+                  
+                  <HStack>
+                    <Icon as={FaCalendarAlt} color="blue.500" boxSize={4} />
+                    <Text fontWeight="medium" fontSize="md">Date:</Text>
+                    <Text fontSize="md">{formatDate(drop.startTime)}</Text>
+                  </HStack>
+                  
+                  <HStack>
+                    <Icon as={FaClock} color="purple.500" boxSize={4} />
+                    <Text fontWeight="medium" fontSize="md">Time:</Text>
+                    <Text fontSize="md">{formatTime(drop.startTime)}</Text>
+                  </HStack>
+
+                  <HStack>
+                    <Icon as={FaCalendarCheck} color="teal.500" boxSize={4} />
+                    <Text fontWeight="medium" fontSize="md">Registration Deadline:</Text>
+                    <Text fontSize="md">{formatDate(drop.registrationDeadline)} at {formatTime(drop.registrationDeadline)}</Text>
+                  </HStack>
+                </VStack>
+              </Box>
 
               {/* Right Column - Timer and Action */}
-              <VStack align="center" justify="center" spacing={4}>
+              <VStack align="stretch" spacing={4}>
                 <Box 
                   p={4} 
                   borderRadius="lg" 
-                  bg={useColorModeValue('gray.50', 'gray.700')}
-                  width="full"
+                  bg={useColorModeValue('blue.50', 'blue.900')}
                   textAlign="center"
                 >
-                  <Text fontSize="md" mb={2}>Time until drop:</Text>
+                  <Text fontSize="md" mb={1}>Time until drop:</Text>
                   <Text 
                     fontSize="2xl" 
                     fontWeight="bold" 
                     color={useColorModeValue('blue.600', 'blue.300')}
                   >
-                    {timeLeft[drop.id] || calculateTimeLeft(drop.startTime)}
+                    {timeLeft[drop.id]}
                   </Text>
                 </Box>
 
-                <Box width="full">
+                <VStack spacing={2} width="full">
                   <Button
-                    colorScheme="blue"
-                    size="lg"
+                    size="md"
                     width="full"
-                    leftIcon={<FaCalendarCheck />}
+                    height="48px"
+                    colorScheme="blue"
+                    fontSize="md"
+                    leftIcon={<Icon as={FaCalendarCheck} boxSize={4} />}
                     isLoading={joiningDrops.has(drop.id)}
-                    isDisabled={Boolean(
-                      drop.participants?.includes(auth.currentUser?.uid || '') ||
-                      (drop.participants && drop.maxParticipants && 
-                       drop.participants.length >= drop.maxParticipants)
-                    )}
+                    loadingText="Joining..."
                     onClick={() => joinDrop(drop)}
-                    _hover={{ transform: 'translateY(-1px)' }}
                   >
-                    {drop.participants?.includes(auth.currentUser?.uid || '')
-                      ? 'Already Registered'
-                      : (drop.participants && drop.maxParticipants && 
-                         drop.participants.length >= drop.maxParticipants)
-                        ? 'Drop Full'
-                        : 'Join Drop'}
+                    Join Drop
                   </Button>
-                  
-                  {/* Capacity indicator */}
-                  <Box mt={2} textAlign="center">
-                    <Text fontSize="sm" color={textColor}>
-                      {drop.currentParticipants || 0} / {drop.maxParticipants || 10} spots filled
-                    </Text>
-                    <Progress 
-                      value={((drop.currentParticipants || 0) / (drop.maxParticipants || 10)) * 100}
-                      size="sm"
-                      mt={1}
-                      colorScheme="blue"
-                      borderRadius="full"
-                    />
-                  </Box>
-                </Box>
+
+                  {participants[drop.id] && (
+                    <Box width="full">
+                      <Progress 
+                        value={(participants[drop.id].totalParticipants / participants[drop.id].maxParticipants) * 100}
+                        size="sm"
+                        colorScheme="blue"
+                        borderRadius="full"
+                        mb={1}
+                      />
+                      <Text fontSize="sm" textAlign="center" color={textColor}>
+                        {participants[drop.id].totalParticipants} / {participants[drop.id].maxParticipants} spots filled
+                      </Text>
+                    </Box>
+                  )}
+                </VStack>
               </VStack>
             </SimpleGrid>
           </Box>

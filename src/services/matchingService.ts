@@ -72,6 +72,23 @@ const calculateMatchScoreFromProfiles = (
   return score;
 };
 
+// Helper function to convert partial participant to full UserProfile
+const convertToUserProfile = (participant: { 
+  name: string; 
+  profileId: string; 
+  email?: string;
+}): UserProfile => ({
+  id: participant.profileId,
+  uid: participant.profileId,
+  name: participant.name,
+  displayName: participant.name,
+  email: participant.email || '',
+  interests: [],
+  cuisines: [],
+  profilePicture: '',
+  photoURL: ''
+});
+
 // Generate matches for a specific drop
 export const generateDropMatches = async (dropId: string): Promise<void> => {
   try {
@@ -87,18 +104,30 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
       console.error('Drop not found:', dropId);
       throw new Error('Drop not found');
     }
-    if (!participantsSnap.exists()) {
-      console.error('No participants found for drop:', dropId);
-      throw new Error('No participants found');
-    }
 
     const drop = dropSnap.data() as Drop;
-    const participantsData = participantsSnap.data() as DropParticipants;
-    console.log('Found drop and participants');
+    
+    // Check if participants document exists and has participants
+    const participantsData = participantsSnap.exists() 
+      ? participantsSnap.data() as DropParticipants 
+      : { 
+          id: dropId, 
+          dropId: dropId, 
+          dropName: drop.title,
+          registeredAt: Timestamp.now(),
+          participants: {}, 
+          totalParticipants: 0,
+          maxParticipants: drop.maxParticipants || 10
+        };
 
-    // Get all participant IDs
     const participantIds = Object.keys(participantsData.participants);
     console.log('Processing participants:', participantIds);
+
+    // Validate participant count
+    if (participantIds.length < 2) {
+      console.warn(`Not enough participants for drop ${dropId}. Skipping match generation.`);
+      return;
+    }
 
     // Batch get all user profiles at once
     const userRefs = participantIds.map(id => doc(db, 'users', id));
@@ -113,10 +142,17 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
       userProfiles.set(snap.id, snap.data() as UserProfile);
     });
 
+    // Validate user profiles
+    const validParticipantIds = participantIds.filter(id => userProfiles.has(id));
+    if (validParticipantIds.length < 2) {
+      console.warn(`Not enough valid user profiles for drop ${dropId}. Skipping match generation.`);
+      return;
+    }
+
     // Prepare matches document
-    const dropMatches: DropMatches = {
-      dropId: dropId,
-      dropName: drop.title,
+    const matchData: DropMatches = {
+      dropId,
+      dropName: drop.title,  // Optional, but included if available
       matches: {},
       totalMatches: 0
     };
@@ -125,10 +161,10 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
     const batch = writeBatch(db);
 
     // Generate matches using cached profiles
-    for (let i = 0; i < participantIds.length; i++) {
-      for (let j = i + 1; j < participantIds.length; j++) {
-        const user1Id = participantIds[i];
-        const user2Id = participantIds[j];
+    for (let i = 0; i < validParticipantIds.length; i++) {
+      for (let j = i + 1; j < validParticipantIds.length; j++) {
+        const user1Id = validParticipantIds[i];
+        const user2Id = validParticipantIds[j];
 
         const user1Profile = userProfiles.get(user1Id);
         const user2Profile = userProfiles.get(user2Id);
@@ -141,6 +177,11 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
         // Create match if score is above threshold
         if (compatibility > 0) {
           const matchId = `${user1Id}_${user2Id}`;
+          const participants: { [userId: string]: UserProfile } = {};
+
+          participants[user1Id] = convertToUserProfile(participantsData.participants[user1Id]);
+          participants[user2Id] = convertToUserProfile(participantsData.participants[user2Id]);
+
           const commonInterests = user1Profile.interests?.filter(
             interest => user2Profile.interests?.includes(interest)
           ) || [];
@@ -148,26 +189,20 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
             cuisine => user2Profile.cuisines?.includes(cuisine)
           ) || [];
 
-          const matchData = {
-            participants: {
-              [user1Id]: {
-                name: participantsData.participants[user1Id].name,
-                profileId: user1Id
-              },
-              [user2Id]: {
-                name: participantsData.participants[user2Id].name,
-                profileId: user2Id
-              }
-            },
+          const matchDataEntry: Match = {
+            id: matchId,
+            participants,
+            responses: {},
             compatibility,
             commonInterests,
             commonCuisines,
-            status: 'pending' as const,
-            createdAt: Timestamp.now()
+            status: 'pending',
+            createdAt: Timestamp.now(),
+            dropId
           };
 
-          dropMatches.matches[matchId] = matchData;
-          dropMatches.totalMatches++;
+          matchData.matches[matchId] = matchDataEntry;
+          matchData.totalMatches++;
 
           // Create notifications for both users
           const createNotificationForUser = (userId: string, matchedUserId: string, matchedUserName: string) => {
@@ -203,22 +238,20 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
             batch.set(notificationRef, notification);
           };
 
-          // Create notifications for both users
-          createNotificationForUser(user1Id, user2Id, user2Profile.name || 'Anonymous');
-          createNotificationForUser(user2Id, user1Id, user1Profile.name || 'Anonymous');
+          createNotificationForUser(user1Id, user2Id, participantsData.participants[user2Id].name);
+          createNotificationForUser(user2Id, user1Id, participantsData.participants[user1Id].name);
         }
       }
     }
 
-    // Write matches and update drop status in the batch
-    const matchesRef = doc(db, 'dropMatches', dropId);
-    batch.set(matchesRef, dropMatches);
-    batch.update(doc(db, 'drops', dropId), { status: 'matched' });
-    
-    // Commit all changes (matches, notifications, and drop status update)
-    await batch.commit();
-    console.log('Successfully wrote matches, notifications, and updated drop status');
+    // Save drop matches
+    const dropMatchesRef = doc(db, 'dropMatches', dropId);
+    batch.set(dropMatchesRef, matchData);
 
+    // Commit batch
+    await batch.commit();
+
+    console.log(`Generated ${matchData.totalMatches} matches for drop ${dropId}`);
   } catch (error) {
     console.error('Error in generateDropMatches:', error);
     throw error;
@@ -226,24 +259,79 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
 };
 
 // Get matches for a specific drop
-export const getDropMatches = async (dropId: string): Promise<DropMatches | null> => {
-  const matchesRef = doc(db, 'dropMatches', dropId);
-  const matchesSnap = await getDoc(matchesRef);
-  
-  return matchesSnap.exists() 
-    ? matchesSnap.data() as DropMatches 
-    : null;
+export async function getDropMatches(dropId: string): Promise<DropMatches | null> {
+  try {
+    if (!dropId || dropId.trim() === '') {
+      console.warn('Invalid drop ID for match retrieval');
+      return null;
+    }
+
+    const matchesRef = doc(db, 'dropMatches', dropId);
+    const matchesDoc = await getDoc(matchesRef);
+
+    if (!matchesDoc.exists()) {
+      // Only log for past drops, not upcoming drops
+      const dropRef = doc(db, 'drops', dropId);
+      const dropDoc = await getDoc(dropRef);
+      
+      if (dropDoc.exists()) {
+        const dropData = dropDoc.data() as Drop;
+        const currentTime = new Date();
+        
+        // Only log warning if the drop is in the past
+        if (dropData.registrationDeadline.toDate() < currentTime) {
+          console.warn(`No matches found for past drop ${dropId}`);
+        }
+      }
+      
+      return null;
+    }
+
+    const matchesData = matchesDoc.data() as DropMatches;
+    return {
+      ...matchesData,
+      dropId: dropId
+    };
+  } catch (error) {
+    console.error(`Error retrieving matches for drop ${dropId}:`, error);
+    return null;
+  }
 };
 
 // Get matches for a specific user
 export const getUserMatches = async (userId: string): Promise<DropMatches[]> => {
-  // Query all drop matches where the user is a participant
-  const matchesQuery = query(
-    collection(db, 'dropMatches'),
-    where(`matches.*.participants.${userId}`, '!=', null)
-  );
+  try {
+    if (!userId) {
+      console.warn('No user ID provided for match retrieval');
+      return [];
+    }
 
-  const matchesSnap = await getDocs(matchesQuery);
-  
-  return matchesSnap.docs.map(doc => doc.data() as DropMatches);
+    const matchesRef = collection(db, 'dropMatches');
+    const matchesSnap = await getDocs(matchesRef);
+    
+    const userMatches: DropMatches[] = [];
+
+    matchesSnap.docs.forEach(doc => {
+      const dropMatchData = doc.data() as DropMatches;
+      
+      // Check if the matches object exists and has any matches
+      if (dropMatchData.matches && Object.keys(dropMatchData.matches).length > 0) {
+        // Check if any match contains the user
+        const userDropMatches = Object.entries(dropMatchData.matches)
+          .filter(([_, match]) => 
+            match.participants && 
+            Object.keys(match.participants).includes(userId)
+          );
+
+        if (userDropMatches.length > 0) {
+          userMatches.push(dropMatchData);
+        }
+      }
+    });
+
+    return userMatches;
+  } catch (error) {
+    console.error('Error fetching user matches:', error);
+    return [];
+  }
 };

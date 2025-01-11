@@ -31,50 +31,69 @@ export interface Drop {
   status: 'upcoming' | 'matched' | 'completed';
 }
 
+export interface MatchResponse {
+  status: 'pending' | 'accepted' | 'declined';
+  respondedAt: Timestamp;
+}
+
 export interface Match {
   id: string;
-  users: string[];
+  participants: {
+    [userId: string]: UserProfile;
+  };
+  responses: {
+    [userId: string]: MatchResponse;
+  };
   compatibility: number;
-  matchedAt: Timestamp;
-  
-  dropId: string;
   commonInterests: string[];
   commonCuisines: string[];
-  compatibilityScore: number;
-  status: 'pending' | 'confirmed' | 'cancelled';
-  createdAt: Timestamp;
-  meetingDetails: {
+  status: 'pending' | 'confirmed' | 'declined' | 'cancelled';
+  meetingDetails?: {
     location: string;
     time: Timestamp;
   };
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+  dropId: string;
 }
 
 export interface UserProfile {
   id: string;
   uid: string;
   name: string;
-  email: string;
   displayName: string;
-  photoURL?: string;
+  email: string;
   interests: string[];
   cuisines: string[];
-  cuisinePreferences: string[];
-  location: string;
-  bio?: string;
+  age?: number;
+  gender?: string;
+  profilePicture?: string;
+  photoURL?: string;
   avatar?: string;
+  bio?: string;
+  location?: string;
+  dietaryRestrictions?: string[];
+  socialMediaLinks?: {
+    instagram?: string;
+    linkedin?: string;
+    twitter?: string;
+  };
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+  
+  // Restored fields for compatibility
   isAdmin?: boolean;
   tempDisableAdmin?: boolean;
   registeredDrops?: string[];
   profileComplete?: boolean;
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
-  streak: number;
-  totalMatches: number;
-  progress: number;
-  connections: number;
-  completedChallenges: string[];
-  meetingPreference: string;
-  priceRange: string;
+  streak?: number;
+  totalMatches?: number;
+  progress?: number;
+  connections?: number;
+  completedChallenges?: string[];
+  meetingPreference?: string;
+  priceRange?: string;
+  cuisinePreferences?: string[];
 }
 
 export interface DropRegistration {
@@ -86,18 +105,20 @@ export interface DropRegistration {
 
 // Centralized Participants Collection
 export interface DropParticipants {
+  id: string;
   dropId: string;
   dropName: string;
+  registeredAt: Timestamp;
   participants: {
     [userId: string]: {
       name: string;
+      profileId: string;
       registeredAt: Timestamp;
-      status: 'pending' | 'confirmed' | 'matched' | 'cancelled';
-      profile?: {
-        interests?: string[];
-        cuisines?: string[];
-      };
-    }
+      status: 'pending' | 'confirmed' | 'cancelled';
+    };
+  };
+  registeredUsers?: {
+    [userId: string]: UserProfile & { registeredAt: Timestamp };
   };
   totalParticipants: number;
   maxParticipants: number;
@@ -106,27 +127,67 @@ export interface DropParticipants {
 // Centralized Matches Collection
 export interface DropMatches {
   dropId: string;
-  dropName: string;
+  dropName?: string;
   matches: {
-    [matchId: string]: {
-      participants: {
-        [userId: string]: {
-          name: string;
-          profileId: string;
-        }
-      };
-      compatibility: number;
-      commonInterests: string[];
-      commonCuisines: string[];
-      status: 'pending' | 'confirmed' | 'cancelled';
-      meetingDetails?: {
-        location: string;
-        time: Timestamp;
-      };
-      createdAt: Timestamp;
-    }
+    [matchId: string]: Match;
   };
   totalMatches: number;
+}
+
+export interface MatchInCollection {
+  dropId: string;
+  matchId: string;
+  participants: {
+    [userId: string]: {
+      name: string;
+      response?: 'accepted' | 'declined';
+      respondedAt?: Timestamp;
+      profile?: UserProfile;
+    }
+  };
+  status: 'pending' | 'accepted' | 'declined';
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+  acceptedAt?: Timestamp | null;
+}
+
+export interface SuccessfulMatch {
+  id: string;
+  dropId: string;
+  participants: {
+    [userId: string]: {
+      profile: UserProfile;
+      matchedAt: Timestamp;
+    }
+  };
+  matchDetails: {
+    compatibility: number;
+    commonInterests: string[];
+    commonCuisines: string[];
+  };
+  status: 'active' | 'completed' | 'cancelled';
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
+}
+
+export interface MatchOutcome {
+  id: string;
+  dropId: string;
+  participants: {
+    [userId: string]: {
+      profile: UserProfile;
+      response: 'yes' | 'no';
+      respondedAt: Timestamp;
+    }
+  };
+  matchDetails: {
+    compatibility: number;
+    commonInterests: string[];
+    commonCuisines: string[];
+  };
+  status: 'successful' | 'unsuccessful';
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 // Default factory functions to help with initialization
@@ -149,45 +210,52 @@ export const createDefaultDrop = (partialDrop: Partial<Drop> = {}): Drop => ({
 
 export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => ({
   id: partialMatch.id || '',
-  users: partialMatch.users || [],
+  participants: partialMatch.participants || {},
+  responses: partialMatch.responses || {},
   compatibility: partialMatch.compatibility || 0,
-  matchedAt: partialMatch.matchedAt || Timestamp.now(),
-  dropId: partialMatch.dropId || '',
   commonInterests: partialMatch.commonInterests || [],
   commonCuisines: partialMatch.commonCuisines || [],
-  compatibilityScore: partialMatch.compatibilityScore || 0,
   status: partialMatch.status || 'pending',
-  createdAt: partialMatch.createdAt || Timestamp.now(),
   meetingDetails: partialMatch.meetingDetails || {
     location: 'TBD',
     time: Timestamp.now(),
   },
+  createdAt: partialMatch.createdAt || Timestamp.now(),
+  updatedAt: partialMatch.updatedAt,
+  dropId: partialMatch.dropId || '',
 });
 
-export const createDefaultUserProfile = (partialUser: Partial<UserProfile> = {}): UserProfile => ({
+export const createUserProfile = (partialUser: Partial<UserProfile>): UserProfile => ({
   id: partialUser.id || '',
   uid: partialUser.uid || '',
   name: partialUser.name || 'New User',
-  email: partialUser.email || '',
   displayName: partialUser.displayName || 'New User',
-  photoURL: partialUser.photoURL || '',
+  email: partialUser.email || '',
   interests: partialUser.interests || [],
   cuisines: partialUser.cuisines || [],
-  cuisinePreferences: partialUser.cuisinePreferences || [],
-  location: partialUser.location || '',
-  bio: partialUser.bio || '',
-  avatar: partialUser.avatar || '',
+  age: partialUser.age,
+  gender: partialUser.gender,
+  profilePicture: partialUser.profilePicture || partialUser.photoURL,
+  photoURL: partialUser.photoURL || partialUser.profilePicture,
+  avatar: partialUser.avatar,
+  bio: partialUser.bio,
+  location: partialUser.location,
+  dietaryRestrictions: partialUser.dietaryRestrictions,
+  socialMediaLinks: partialUser.socialMediaLinks,
+  createdAt: partialUser.createdAt,
+  updatedAt: partialUser.updatedAt,
+  
+  // Restored fields with default values
   isAdmin: partialUser.isAdmin || false,
   tempDisableAdmin: partialUser.tempDisableAdmin || false,
   registeredDrops: partialUser.registeredDrops || [],
   profileComplete: partialUser.profileComplete || false,
-  createdAt: partialUser.createdAt || Timestamp.now(),
-  updatedAt: partialUser.updatedAt || Timestamp.now(),
   streak: partialUser.streak || 0,
   totalMatches: partialUser.totalMatches || 0,
   progress: partialUser.progress || 0,
   connections: partialUser.connections || 0,
   completedChallenges: partialUser.completedChallenges || [],
   meetingPreference: partialUser.meetingPreference || '',
-  priceRange: partialUser.priceRange || ''
+  priceRange: partialUser.priceRange || '',
+  cuisinePreferences: partialUser.cuisinePreferences || partialUser.cuisines || []
 });

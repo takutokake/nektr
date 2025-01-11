@@ -1,3 +1,5 @@
+import { Timestamp } from 'firebase/firestore';
+
 export type MeetingType = 'platonic' | 'professional' | 'exploratory';
 
 export interface UserProfile {

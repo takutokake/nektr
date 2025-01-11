@@ -41,7 +41,7 @@ const mockBadges: Badge[] = [
   { 
     id: '1', 
     name: 'Newcomer', 
-    description: 'Welcome to Nectr!', 
+    description: 'Welcome to Nektr!', 
     icon: 'FaLock' 
   },
   { 

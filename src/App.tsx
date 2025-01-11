@@ -6,7 +6,7 @@ import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import AdminDashboard from './components/admin/AdminDashboard'
 import { Drop, UserProfile } from './types'
-import { dropsCache } from './services/dropsService'
+import { dropsService } from './services/dropsService'
 import { db } from './firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
@@ -15,6 +15,7 @@ function App() {
   const { user, loading, error, logout } = useAuth();
   const [drops, setDrops] = useState<Drop[]>([]);
   const [dropsLoading, setDropsLoading] = useState(false);
+  const [hasMoreDrops, setHasMoreDrops] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const toast = useToast();
   const navigate = useNavigate();
@@ -23,8 +24,9 @@ function App() {
     const fetchDrops = async () => {
       try {
         setDropsLoading(true);
-        const cachedDrops = await dropsCache.getDrops();
-        setDrops(cachedDrops);
+        const { drops, hasMore } = await dropsService.getDrops();
+        setDrops((prevDrops) => [...prevDrops, ...drops]);
+        setHasMoreDrops(hasMore);
       } catch (error) {
         console.error('Error fetching drops:', error);
         toast({

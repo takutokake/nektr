@@ -28,7 +28,8 @@ const defaultUserProfile = (user: User): UserProfile => ({
   cuisinePreferences: [],
   location: '',
   bio: '',
-  avatar: '',
+  avatar: '', // Added this line
+  profilePicture: '', // Added this line
   isAdmin: false,
   tempDisableAdmin: false,
   registeredDrops: [],

@@ -58,20 +58,34 @@ class DropsCache {
     }
   }
 
-  private async fetchUpcomingDrops(): Promise<Drop[]> {
-    const now = Timestamp.now();
-    const q = query(
-      collection(db, 'drops'),
-      where('startTime', '>', now),
-      orderBy('startTime'),
-      limit(5)
-    );
-    
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Drop));
+  async fetchUpcomingDrops(): Promise<Drop[]> {
+    try {
+      const currentTime = new Date();
+      const oneMonthFromNow = new Date(currentTime.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const dropsRef = collection(db, 'drops');
+      const q = query(
+        dropsRef, 
+        where('startTime', '>=', Timestamp.fromDate(currentTime)),
+        where('startTime', '<=', Timestamp.fromDate(oneMonthFromNow)),
+        orderBy('startTime', 'asc')
+      );
+
+      const querySnapshot = await getDocs(q);
+      const drops: Drop[] = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+
+      // Cache the drops
+      this.drops = drops;
+      this.lastFetch = new Date();
+
+      return drops;
+    } catch (error) {
+      console.error('Error fetching upcoming drops:', error);
+      return [];
+    }
   }
 
   public async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
@@ -151,4 +165,106 @@ class DropsCache {
   }
 }
 
+class DropsService {
+  private static instance: DropsService;
+  private cache: DropsCache;
+
+  private constructor() {
+    this.cache = DropsCache.getInstance();
+  }
+
+  public static getInstance(): DropsService {
+    if (!DropsService.instance) {
+      DropsService.instance = new DropsService();
+    }
+    return DropsService.instance;
+  }
+
+  public async getDrops(options: {
+    page?: number;
+    limit?: number;
+    forceRefresh?: boolean;
+  } = {}): Promise<{ drops: Drop[]; hasMore: boolean }> {
+    const drops = await this.cache.getDrops();
+    return { 
+      drops, 
+      hasMore: drops.length > (options.limit || 5) 
+    };
+  }
+
+  public async getUpcomingDrops(
+    userId: string, 
+    page: number = 1, 
+    forceRefresh: boolean = false
+  ): Promise<{ drops: Drop[]; hasMore: boolean }> {
+    const drops = await this.cache.getUpcomingDrops(userId);
+    return { 
+      drops, 
+      hasMore: drops.length > page * 5 
+    };
+  }
+
+  public async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
+    return this.cache.createDrop(drop);
+  }
+
+  public async getUpcomingDropsForAdmin(maxResults: number = 50): Promise<Drop[]> {
+    try {
+      const currentTime = new Date();
+      const dropsRef = collection(db, 'drops');
+      const q = query(
+        dropsRef, 
+        where('startTime', '>=', Timestamp.fromDate(currentTime)),
+        orderBy('startTime', 'asc'),
+        limit(maxResults)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const drops: Drop[] = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+
+      return drops;
+    } catch (error) {
+      console.error('Error fetching drops for admin:', error);
+      return [];
+    }
+  }
+
+  public async getPastDropsForMatching(maxResults: number = 50): Promise<Drop[]> {
+    try {
+      const currentTime = new Date();
+      const dropsRef = collection(db, 'drops');
+      const q = query(
+        dropsRef, 
+        where('registrationDeadline', '<=', Timestamp.fromDate(currentTime)),
+        orderBy('registrationDeadline', 'desc'),
+        limit(maxResults)
+      );
+
+      const querySnapshot = await getDocs(q);
+      const drops: Drop[] = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+
+      return drops;
+    } catch (error) {
+      console.error('Error fetching past drops for matching:', error);
+      return [];
+    }
+  }
+
+  public clearCache(userId?: string): void {
+    if (userId) {
+      this.cache.clearCache(userId);
+    } else {
+      this.cache.clearAllCache();
+    }
+  }
+}
+
+export const dropsService = DropsService.getInstance();
 export const dropsCache = DropsCache.getInstance();
+export default DropsService;

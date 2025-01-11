@@ -48,6 +48,8 @@ import {
   setDoc,
   addDoc
 } from 'firebase/firestore';
+import { dropsService } from '../../services/dropsService';
+import { useMatchRegistration } from '../../hooks/useMatchRegistration';
 
 interface HomePageProps {
   user: UserProfile;
@@ -57,8 +59,9 @@ interface HomePageProps {
 
 const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const { logout } = useAuth();
+  const { respondToMatch } = useMatchRegistration();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [dropsData, setDropsData] = useState<Drop[]>(drops);
+  const [dropsData, setDropsData] = useState<Drop[]>([]);
   const [dropsCache, setDropsCache] = useState<{[key: string]: Drop}>({});
   const [participantsCache, setParticipantsCache] = useState<{[key: string]: any}>({});
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -69,8 +72,24 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setDropsData(drops);
-  }, [drops]);
+    const fetchDrops = async () => {
+      try {
+        const { drops } = await dropsService.getDrops();
+        setDropsData(drops);
+      } catch (error) {
+        console.error('Error fetching drops:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to fetch drops',
+          status: 'error',
+          duration: 3000,
+          isClosable: true,
+        });
+      }
+    };
+
+    fetchDrops();
+  }, []);
 
   const handleOpenProfileModal = () => {
     setIsProfileModalOpen(true);
@@ -105,7 +124,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   };
 
   const handleDropUpdate = () => {
-    setDropsData(drops);
+    // Removed this function as it's no longer needed
   };
 
   const getStartTime = (timestamp?: any) => {
@@ -328,50 +347,78 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
     if (!user?.uid) return;
 
     try {
-      const notificationRef = doc(db, 'users', user.uid, 'notifications', notificationId);
-      await updateDoc(notificationRef, {
-        actionTaken: true,
-        'matchDetails.status': 'accepted',
-        read: true
+      console.log('Attempting to accept match:', { 
+        notificationId, 
+        matchDetails,
+        userId: user.uid
       });
 
-      // Create or update the match document
-      const matchRef = doc(db, 'matches', `${matchDetails.dropId}_${user.uid}_${matchDetails.matchedUserId}`);
-      try {
-        await updateDoc(matchRef, {
-          status: 'accepted',
-          acceptedAt: Timestamp.now(),
-          [`responses.${user.uid}`]: 'accepted'
+      // Ensure we have the correct dropId and matchId
+      const dropId = matchDetails.dropId;
+      
+      // Try to extract the actual matchId from the available information
+      const actualMatchId = [
+        matchDetails.matchId,
+        `${user.uid}_${matchDetails.matchedUserId}`,
+        `${matchDetails.matchedUserId}_${user.uid}`
+      ].find(id => id && id.length > 10);
+
+      // Validate required fields
+      if (!dropId) {
+        console.error('Missing dropId in match details');
+        toast({
+          title: 'Match Accept Failed',
+          description: 'Missing drop information',
+          status: 'error',
+          duration: 5000,
+          isClosable: true
         });
-      } catch (error) {
-        // If document doesn't exist, create it
-        await setDoc(matchRef, {
-          dropId: matchDetails.dropId,
-          participants: [user.uid, matchDetails.matchedUserId],
-          status: 'accepted',
-          acceptedAt: Timestamp.now(),
-          responses: {
-            [user.uid]: 'accepted'
-          },
-          createdAt: Timestamp.now()
-        });
+        return;
       }
 
-      toast({
-        title: 'Match Accepted',
-        description: `You've accepted the match with ${matchDetails.matchedUserName}!`,
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      // Construct a consistent matchId format
+      const matchId = `${dropId}_${actualMatchId}`;
+
+      // Use respondToMatch to handle the match response
+      const success = await respondToMatch(dropId, matchId, 'accepted');
+
+      if (success) {
+        const notificationRef = doc(db, 'users', user.uid, 'notifications', notificationId);
+        
+        try {
+          await updateDoc(notificationRef, {
+            actionTaken: true,
+            'matchDetails.status': 'accepted',
+            read: true
+          });
+        } catch (notificationUpdateError) {
+          console.error('Error updating notification:', notificationUpdateError);
+        }
+
+        toast({
+          title: 'Match Accepted',
+          description: `You've accepted the match with ${matchDetails.matchedUserName}!`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true
+        });
+      } else {
+        toast({
+          title: 'Match Accept Failed',
+          description: 'Unable to accept the match. Please try again.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true
+        });
+      }
     } catch (error) {
       console.error('Error accepting match:', error);
       toast({
         title: 'Error',
-        description: 'Failed to accept match. Please try again.',
+        description: 'An unexpected error occurred while accepting the match.',
         status: 'error',
         duration: 5000,
-        isClosable: true,
+        isClosable: true
       });
     }
   };
@@ -387,16 +434,9 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         read: true
       });
 
-      // Create or update the match document
       const matchRef = doc(db, 'matches', `${matchDetails.dropId}_${user.uid}_${matchDetails.matchedUserId}`);
+      
       try {
-        await updateDoc(matchRef, {
-          status: 'declined',
-          declinedAt: Timestamp.now(),
-          [`responses.${user.uid}`]: 'declined'
-        });
-      } catch (error) {
-        // If document doesn't exist, create it
         await setDoc(matchRef, {
           dropId: matchDetails.dropId,
           participants: [user.uid, matchDetails.matchedUserId],
@@ -406,7 +446,20 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
             [user.uid]: 'declined'
           },
           createdAt: Timestamp.now()
+        }, { merge: true }); 
+
+      } catch (createError) {
+        console.error('Error creating/updating match:', createError);
+        
+        toast({
+          title: 'Match Decline Failed',
+          description: `Unable to process match. Please try again. ${createError instanceof Error ? createError.message : ''}`,
+          status: 'error',
+          duration: 5000,
+          isClosable: true
         });
+        
+        throw createError;
       }
 
       toast({
@@ -418,12 +471,13 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
       });
     } catch (error) {
       console.error('Error declining match:', error);
+      
       toast({
-        title: 'Error',
-        description: 'Failed to decline match. Please try again.',
+        title: 'Match Decline Error',
+        description: `An unexpected error occurred. ${error instanceof Error ? error.message : 'Please try again.'}`,
         status: 'error',
         duration: 5000,
-        isClosable: true,
+        isClosable: true
       });
     }
   };
@@ -465,12 +519,13 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
       });
     } catch (error) {
       console.error('Error creating test notification:', error);
+      
       toast({
         title: 'Error',
-        description: 'Failed to create test notification: ' + (error instanceof Error ? error.message : 'Unknown error'),
+        description: `Failed to create test notification: ${error instanceof Error ? error.message : 'Unknown error'}`,
         status: 'error',
         duration: 5000,
-        isClosable: true,
+        isClosable: true
       });
     }
   };

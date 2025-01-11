@@ -8,105 +8,67 @@ service cloud.firestore {
 
     // Helper function to check if a user is an admin
     function isAdmin() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return request.auth.uid == 'ADMIN_UID' || 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // Helper function to check if a participant count is valid
-    function isValidParticipantCount(data) {
-      return ('totalParticipants' in data && 'maxParticipants' in data) ? 
-             data.totalParticipants <= data.maxParticipants : true;
-    }
-
-    // Helper function to check if user is adding only themselves
-    function isAddingOnlySelf(existing, incoming) {
-      let existingParticipants = existing != null ? existing.participants : {};
-      let incomingParticipants = incoming.participants;
-      return existing != null ? 
-        incomingParticipants.diff(existingParticipants).addedKeys().hasOnly([request.auth.uid]) :
-        true;
-    }
-
-    // Helper function to check if user is involved in a match
+    // Helper function to validate match involvement
     function isInvolvedInMatch(matchId) {
-      return matchId.matches('^.*_' + request.auth.uid + '_.*$') || 
-             matchId.matches('^.*_.*_' + request.auth.uid + '$');
+      let participants = matchId.split('_');
+      return request.auth.uid == participants[0] || 
+             request.auth.uid == participants[1];
+    }
+
+    // Global rule for authenticated users
+    match /{document=**} {
+      allow read, write: if isAuthenticated();
     }
 
     // Users Collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && 
-                    (request.auth.uid == userId || isAdmin());
-      allow write: if isAuthenticated() && 
-                    (request.auth.uid == userId || isAdmin());
+      allow read, write: if isAuthenticated() && 
+                          (request.auth.uid == userId || isAdmin());
 
-      // User notifications subcollection
+      // Notifications subcollection
       match /notifications/{notificationId} {
-        // Allow read for the user's own notifications
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        
-        // Allow write only for:
-        // 1. Admin creating match notifications
-        // 2. User updating their own notification status
-        allow write: if isAuthenticated() && (
-          isAdmin() || 
-          (request.auth.uid == userId && 
-           request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['read', 'actionTaken', 'matchDetails.status']))
-        );
+        allow read, update: if isAuthenticated() && request.auth.uid == userId;
       }
     }
 
     // Drops Collection
     match /drops/{dropId} {
       allow read: if isAuthenticated();
-      allow update: if isAuthenticated() && 
-                   (
-                     request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['participants', 'currentParticipants']) ||
-                     (isAdmin() && request.resource.data.diff(resource.data).affectedKeys()
-                     .hasOnly(['status', 'participants', 'currentParticipants']))
-                   );
-      allow create, delete: if isAdmin();
-    }
-
-    // Drop Participants Collection
-    match /dropParticipants/{dropId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && 
-                   request.resource.data.dropId == dropId &&
-                   request.resource.data.participants[request.auth.uid] != null &&
-                   isValidParticipantCount(request.resource.data);
-      allow update: if isAuthenticated() && 
-                   request.resource.data.dropId == dropId &&
-                   request.resource.data.participants[request.auth.uid] != null &&
-                   isValidParticipantCount(request.resource.data) &&
-                   isAddingOnlySelf(resource.data, request.resource.data);
-      allow get: if isAuthenticated() && isAdmin();
-    }
-
-    // Drop Matches Collection
-    match /dropMatches/{dropId} {
-      // Allow reading matches
-      allow read: if isAuthenticated() && (
-                    (exists(/databases/$(database)/documents/dropParticipants/$(dropId)) &&
-                     get(/databases/$(database)/documents/dropParticipants/$(dropId))
-                     .data.participants[request.auth.uid] != null) ||
-                    isAdmin()
-                  );
       
-      // Allow admins to create and update matches
-      allow create, update: if isAdmin();
-      allow delete: if isAdmin();
-      
-      // Allow getting matches document for match generation
-      allow get: if isAuthenticated() && isAdmin();
+      // DropMatches subcollection
+      match /dropMatches/{matchId} {
+        // Allow read and update for involved participants
+        allow read, update: if isAuthenticated() && 
+          (
+            // Check if the current user is one of the participants
+            matchId.split('_').hasAny([request.auth.uid]) &&
+            
+            // Validate the update is only modifying participant responses
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['participants', 'status', 'lastUpdated', 'totalMatches']) &&
+            
+            // Ensure the user is updating their own response
+            request.resource.data.participants[request.auth.uid].response in ['accepted', 'declined']
+          ) || 
+          isAdmin();
+        
+        // Allow creation for authenticated users
+        allow create: if isAuthenticated() && 
+          (
+            matchId.split('_').hasAny([request.auth.uid]) ||
+            isAdmin()
+          );
+      }
     }
 
-    // Matches Collection
+    // Matches Collection (fallback)
     match /matches/{matchId} {
-      allow read: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
-      allow create: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
-      allow update: if isAuthenticated() && (isInvolvedInMatch(matchId) || isAdmin());
+      allow read, write: if isAuthenticated() && 
+        (isInvolvedInMatch(matchId) || isAdmin());
     }
   }
 }
