@@ -42,10 +42,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const renderMatchNotification = (notification: Notification) => {
-    console.error('FULL Notification Object:', {
-      notification: JSON.stringify(notification, null, 2)
-    });
-
     const { matchDetails } = notification;
     if (!matchDetails) return null;
 
@@ -58,12 +54,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
     const sharedInterests = matchDetails.commonInterests && Array.isArray(matchDetails.commonInterests) && matchDetails.commonInterests.length > 0
       ? matchDetails.commonInterests.map(interest => interest && typeof interest === 'string' ? interest.charAt(0).toUpperCase() + interest.slice(1) : 'Unknown')
       : ['No Specific Interests'];
-
-    console.error('Shared Interests Processing:', {
-      matchDetailsCommonInterests: matchDetails.commonInterests,
-      sharedInterests: sharedInterests,
-      notificationObject: JSON.stringify(notification, null, 2)
-    });
 
     return (
       <Box>
@@ -103,16 +93,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
               Decline
             </Button>
           </HStack>
-        )}
-        {notification.actionTaken && matchDetails.status === 'accepted' && (
-          <Box fontSize="sm" color="green.500">
-            You accepted this match
-          </Box>
-        )}
-        {notification.actionTaken && matchDetails.status === 'declined' && (
-          <Box fontSize="sm" color="red.500">
-            You declined this match
-          </Box>
         )}
       </Box>
     );

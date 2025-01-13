@@ -55,15 +55,33 @@ export const MatchRegistrationButton: React.FC<MatchRegistrationButtonProps> = (
   };
 
   const handleDecline = async () => {
+    console.group('Match Decline Flow');
+    console.log('1. Starting decline in MatchRegistrationButton:', {
+      dropId,
+      matchId,
+      matchNotification,
+      timestamp: new Date().toISOString()
+    });
+    
     const success = await respondToMatch(dropId, matchId, 'declined');
+    
+    console.log('2. Decline response from respondToMatch:', {
+      success,
+      timestamp: new Date().toISOString()
+    });
     
     if (success) {
       // Update notification if exists
       if (matchNotification && onNotificationUpdate) {
+        console.log('3. Updating notification:', {
+          notificationId: matchNotification.id,
+          timestamp: new Date().toISOString()
+        });
         onNotificationUpdate(matchNotification.id, 'decline');
       }
 
       if (onRegistrationSuccess) {
+        console.log('4. Calling onRegistrationSuccess callback');
         onRegistrationSuccess();
       }
 
@@ -74,7 +92,10 @@ export const MatchRegistrationButton: React.FC<MatchRegistrationButtonProps> = (
         duration: 3000,
         isClosable: true
       });
+    } else {
+      console.error('Match decline failed');
     }
+    console.groupEnd();
   };
 
   // Determine button states based on match status

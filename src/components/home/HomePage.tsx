@@ -34,6 +34,7 @@ import ChallengesSection from './ChallengesSection';
 import NotificationBell from '../notifications/NotificationBell';
 import { Notification } from '../../types/notifications';
 import { auth, db } from '../../firebase';
+import { MatchRegistrationService } from '../../services/matchRegistrationService';
 import { 
   Timestamp,
   collection,
@@ -424,54 +425,63 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   };
 
   const handleDeclineMatch = async (notificationId: string, matchDetails: any) => {
-    if (!user?.uid) return;
+    console.group('HomePage - handleDeclineMatch');
+    console.log('1. Starting decline match flow:', {
+      notificationId,
+      matchDetails,
+      userId: user?.uid,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!user?.uid) {
+      console.error('No user ID found');
+      console.groupEnd();
+      return;
+    }
 
     try {
-      const notificationRef = doc(db, 'users', user.uid, 'notifications', notificationId);
-      await updateDoc(notificationRef, {
-        actionTaken: true,
-        'matchDetails.status': 'declined',
-        read: true
+      console.log('2. Calling respondToMatch');
+      const success = await respondToMatch(
+        matchDetails.dropId,
+        `${matchDetails.dropId}_${user.uid}_${matchDetails.matchedUserId}`,
+        'declined'
+      );
+
+      console.log('3. Response from respondToMatch:', {
+        success,
+        timestamp: new Date().toISOString()
       });
 
-      const matchRef = doc(db, 'matches', `${matchDetails.dropId}_${user.uid}_${matchDetails.matchedUserId}`);
-      
-      try {
-        await setDoc(matchRef, {
-          dropId: matchDetails.dropId,
-          participants: [user.uid, matchDetails.matchedUserId],
-          status: 'declined',
-          declinedAt: Timestamp.now(),
-          responses: {
-            [user.uid]: 'declined'
-          },
-          createdAt: Timestamp.now()
-        }, { merge: true }); 
+      if (success) {
+        console.log('4. Updating notification status');
+        const notificationRef = doc(db, 'users', user.uid, 'notifications', notificationId);
+        await updateDoc(notificationRef, {
+          actionTaken: true,
+          'matchDetails.status': 'declined',
+          read: true
+        });
 
-      } catch (createError) {
-        console.error('Error creating/updating match:', createError);
-        
+        console.log('5. Notification updated successfully');
+
+        toast({
+          title: 'Match Declined',
+          description: 'You have declined this match.',
+          status: 'info',
+          duration: 5000,
+          isClosable: true,
+        });
+      } else {
+        console.error('Match decline failed in respondToMatch');
         toast({
           title: 'Match Decline Failed',
-          description: `Unable to process match. Please try again. ${createError instanceof Error ? createError.message : ''}`,
+          description: 'Unable to decline the match. Please try again.',
           status: 'error',
           duration: 5000,
           isClosable: true
         });
-        
-        throw createError;
       }
-
-      toast({
-        title: 'Match Declined',
-        description: 'You have declined this match.',
-        status: 'info',
-        duration: 5000,
-        isClosable: true,
-      });
     } catch (error) {
-      console.error('Error declining match:', error);
-      
+      console.error('Error in handleDeclineMatch:', error);
       toast({
         title: 'Match Decline Error',
         description: `An unexpected error occurred. ${error instanceof Error ? error.message : 'Please try again.'}`,
@@ -480,6 +490,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         isClosable: true
       });
     }
+    console.groupEnd();
   };
 
   const createTestNotification = async () => {

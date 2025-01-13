@@ -658,6 +658,7 @@ export default function AdminDashboard() {
         <Thead>
           <Tr>
             <Th>Participants</Th>
+            <Th>Responses</Th>
             <Th>Compatibility</Th>
             <Th>Status</Th>
             <Th>Created</Th>
@@ -667,9 +668,26 @@ export default function AdminDashboard() {
           {Object.entries(dropMatches.matches).map(([matchId, match]) => (
             <Tr key={matchId}>
               <Td fontSize="sm">
-                {Object.values(match.participants)
-                  .map(participant => participant.name)
-                  .join(' & ')}
+                {Object.entries(match.participants).map(([userId, participant], index, arr) => (
+                  <React.Fragment key={userId}>
+                    {participant.name}
+                    {index < arr.length - 1 ? ' & ' : ''}
+                  </React.Fragment>
+                ))}
+              </Td>
+              <Td fontSize="sm">
+                {Object.entries(match.responses || {}).map(([userId, response], index, arr) => (
+                  <React.Fragment key={userId}>
+                    <Badge 
+                      colorScheme={response.response === 'accepted' ? 'green' : 
+                                 response.response === 'declined' ? 'red' : 
+                                 'yellow'}
+                      mr={1}
+                    >
+                      {response.response || 'pending'}
+                    </Badge>
+                  </React.Fragment>
+                ))}
               </Td>
               <Td fontSize="sm">{match.compatibility}%</Td>
               <Td>

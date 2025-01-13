@@ -19,7 +19,7 @@ const query = firestoreQuery;
 
 export class MatchRegistrationService {
   // Create a notification for match response
-  private static async createMatchResponseNotification(
+  static async createMatchResponseNotification(
     dropId: string,
     matchId: string,
     respondingUserId: string,
@@ -132,7 +132,7 @@ export class MatchRegistrationService {
   }
 
   // Create a successful match record
-  private static async createSuccessfulMatch(
+  static async createSuccessfulMatch(
     dropId: string,
     matchId: string,
     match: Match
@@ -173,12 +173,25 @@ export class MatchRegistrationService {
     overallStatus: 'successful' | 'unsuccessful'
   ): Promise<void> {
     try {
+      console.group('Creating Match Outcome');
+      console.log('1. Starting match outcome creation:', {
+        dropId,
+        matchId,
+        overallStatus,
+        timestamp: new Date().toISOString()
+      });
+
       const matchOutcomeRef = doc(collection(db, 'matchOutcomes'));
       
       // Get all participant data - ensure we include ALL participants
       const participantsData: Record<string, any> = {};
       const participantIds = Object.keys(match.participants);
       
+      console.log('2. Processing participants:', {
+        participantIds,
+        timestamp: new Date().toISOString()
+      });
+
       // Track responses
       const responses: string[] = [];
 
@@ -202,17 +215,12 @@ export class MatchRegistrationService {
         };
       }
 
-      // Determine match status based on new criteria
-      let finalStatus: 'successful' | 'unsuccessful';
-      if (responses.filter(r => r === 'yes').length === 2) {
-        // Both said yes = successful
-        finalStatus = 'successful';
-      } else {
-        // If anyone says no or both say no = unsuccessful
-        finalStatus = 'unsuccessful';
-      }
+      console.log('3. Participant responses:', {
+        responses,
+        timestamp: new Date().toISOString()
+      });
 
-      const matchOutcome: MatchOutcome = {
+      const matchOutcome = {
         id: matchOutcomeRef.id,
         dropId,
         participants: participantsData,
@@ -221,13 +229,21 @@ export class MatchRegistrationService {
           commonInterests: match.commonInterests,
           commonCuisines: match.commonCuisines
         },
-        status: finalStatus, // Use the dynamically determined status
+        status: overallStatus,
         createdAt: Timestamp.now()
       };
 
+      console.log('4. Creating match outcome document:', {
+        matchOutcome,
+        timestamp: new Date().toISOString()
+      });
+
       await setDoc(matchOutcomeRef, matchOutcome);
+      console.log('5. Match outcome created successfully');
+      console.groupEnd();
     } catch (error) {
       console.error('Error creating match outcome:', error);
+      console.groupEnd();
     }
   }
 
@@ -354,11 +370,24 @@ export class MatchRegistrationService {
     response: 'accepted' | 'declined'
   ): Promise<boolean> {
     try {
+      console.group('MatchRegistrationService.registerMatchResponse');
+      console.log('1. Starting match registration:', {
+        dropId,
+        matchId,
+        userId,
+        response,
+        timestamp: new Date().toISOString()
+      });
+
       const matchesRef = doc(db, 'dropMatches', dropId);
       const matchesDoc = await getDoc(matchesRef);
 
       if (!matchesDoc.exists()) {
-        console.error(`No matches found for drop ${dropId}`);
+        console.error('2. Error: No matches found for drop', {
+          dropId,
+          timestamp: new Date().toISOString()
+        });
+        console.groupEnd();
         return false;
       }
 
@@ -370,38 +399,68 @@ export class MatchRegistrationService {
       ) || matchParts.find(part => part.length > 10);
 
       if (!actualMatchId) {
-        console.error(`Could not determine match ID from ${matchId}`);
+        console.error('3. Error: Could not determine match ID', {
+          matchId,
+          matchParts,
+          timestamp: new Date().toISOString()
+        });
+        console.groupEnd();
         return false;
       }
+
+      console.log('4. Found actual match ID:', {
+        actualMatchId,
+        originalMatchId: matchId,
+        timestamp: new Date().toISOString()
+      });
 
       const match = dropMatches.matches[actualMatchId];
 
       if (!match) {
-        console.error(`Match ${actualMatchId} not found in drop ${dropId}`);
+        console.error('5. Error: Match not found in drop', {
+          actualMatchId,
+          dropId,
+          timestamp: new Date().toISOString()
+        });
+        console.groupEnd();
         return false;
       }
 
-      const matchResponse = {
-        status: response,
+      // Update response in dropMatches collection first
+      const dropMatchResponse = {
+        response: response,
         respondedAt: Timestamp.now()
       };
 
-      const responsePath = `matches.${actualMatchId}.responses.${userId}`;
+      // Update in dropMatches collection
       await updateDoc(matchesRef, {
-        [responsePath]: matchResponse
+        [`matches.${actualMatchId}.responses.${userId}`]: dropMatchResponse
+      });
+
+      console.log('6. Updated response in dropMatches:', {
+        userId,
+        response,
+        timestamp: new Date().toISOString()
       });
 
       const allParticipants = Object.keys(match.participants);
       const otherParticipantId = allParticipants.find(id => id !== userId);
 
       if (otherParticipantId) {
+        console.log('7. Found other participant:', {
+          otherParticipantId,
+          timestamp: new Date().toISOString()
+        });
+
         const participantIds = [userId, otherParticipantId].sort(); 
         const matchDocId = `${participantIds[0]}_${participantIds[1]}_${actualMatchId}`;
         const matchRef = doc(db, 'matches', matchDocId);
 
+        // Get current match data
         const matchDocument = await getDoc(matchRef);
         const existingMatchData = matchDocument.exists() ? matchDocument.data() : {};
 
+        // Update the current user's response
         const updatedMatchData = {
           ...existingMatchData,
           dropId,
@@ -419,38 +478,131 @@ export class MatchRegistrationService {
           updatedAt: Timestamp.now()
         };
 
+        console.log('8. Updating match document:', {
+          matchDocId,
+          updatedMatchData,
+          timestamp: new Date().toISOString()
+        });
+
         await setDoc(matchRef, updatedMatchData);
 
-        const updatedMatchDoc = await getDoc(matchRef);
-        const latestMatchData = updatedMatchDoc.data();
+        // Get fresh data after update
+        const matchesDocAfterUpdate = await getDoc(matchesRef);
+        const updatedDropMatches = matchesDocAfterUpdate.data() as DropMatches;
+        const currentMatch = updatedDropMatches.matches[actualMatchId];
 
-        const responses = latestMatchData?.participants ? 
-          Object.values(latestMatchData.participants)
-            .filter((participant: any) => participant.response) : [];
+        // Get all responses from dropMatches
+        const responses = currentMatch?.responses || {};
+        const participantResponses = Object.entries(responses).map(([id, data]: [string, any]) => ({
+          userId: id,
+          response: data.response,
+          respondedAt: data.respondedAt?.toDate() || new Date()
+        }));
 
-        const bothResponded = responses.length === allParticipants.length;
+        console.log('9. Current participant responses:', {
+          responseCount: participantResponses.length,
+          requiredCount: allParticipants.length,
+          responses: participantResponses.map(r => ({
+            userId: r.userId,
+            response: r.response
+          })),
+          timestamp: new Date().toISOString()
+        });
 
+        // If first user declines, mark as unsuccessful immediately
+        if (participantResponses.length === 1 && response === 'declined') {
+          console.log('10. First user declined - marking as unsuccessful');
+          await updateDoc(matchRef, {
+            status: 'declined',
+            acceptedAt: null
+          });
+          await this.createMatchOutcome(dropId, actualMatchId, match, 'unsuccessful');
+          console.groupEnd();
+          return true;
+        }
+
+        // Only proceed if both participants have actually responded
+        const bothResponded = participantResponses.length === allParticipants.length;
+        
         if (bothResponded) {
-          const bothAccepted = responses.every(
-            (participant: any) => participant.response === 'accepted'
-          );
+          console.log('11. Both participants have responded');
+
+          // Sort responses chronologically
+          const sortedResponses = participantResponses
+            .sort((a, b) => a.respondedAt.getTime() - b.respondedAt.getTime());
+
+          console.log('12. Responses in chronological order:', {
+            sortedResponses: sortedResponses.map(r => ({
+              userId: r.userId,
+              response: r.response,
+              respondedAt: r.respondedAt.toISOString()
+            })),
+            timestamp: new Date().toISOString()
+          });
+
+          // Rule: If any user declines, match is unsuccessful
+          if (sortedResponses.some(r => r.response === 'declined')) {
+            console.log('13. Match unsuccessful - One user declined');
+            console.log('Match decline details:', {
+              dropId,
+              matchId: actualMatchId,
+              match,
+              sortedResponses,
+              declinedBy: sortedResponses
+                .filter(r => r.response === 'declined')
+                .map(r => r.userId),
+              timestamp: new Date().toISOString()
+            });
+
+            await updateDoc(matchRef, {
+              status: 'declined',
+              acceptedAt: null
+            });
+
+            console.log('14. Updated match status to declined');
+
+            await this.createMatchOutcome(dropId, actualMatchId, match, 'unsuccessful');
+            
+            console.log('15. Created unsuccessful match outcome');
+            console.groupEnd();
+            return true;
+          }
+
+          // Rule: If both users approve, match is successful
+          const bothAccepted = sortedResponses.every(r => r.response === 'accepted');
+          
+          console.log('13. Final match status:', {
+            bothAccepted,
+            status: bothAccepted ? 'accepted' : 'declined',
+            timestamp: new Date().toISOString()
+          });
 
           await updateDoc(matchRef, {
             status: bothAccepted ? 'accepted' : 'declined',
             acceptedAt: bothAccepted ? Timestamp.now() : null
           });
 
-          if (bothAccepted) {
-            await this.createMatchOutcome(dropId, actualMatchId, match, 'successful');
-          } else {
-            await this.createMatchOutcome(dropId, actualMatchId, match, 'unsuccessful');
-          }
+          await this.createMatchOutcome(
+            dropId, 
+            actualMatchId, 
+            match, 
+            bothAccepted ? 'successful' : 'unsuccessful'
+          );
+        } else {
+          console.log('11. Waiting for other participant to respond', {
+            currentResponses: participantResponses.length,
+            requiredResponses: allParticipants.length,
+            timestamp: new Date().toISOString()
+          });
         }
       }
 
+      console.log('14. Match registration completed');
+      console.groupEnd();
       return true;
     } catch (error) {
-      console.error('Error registering match response:', error);
+      console.error('Error in match registration:', error);
+      console.groupEnd();
       return false;
     }
   }

@@ -14,27 +14,28 @@ export const useMatchRegistration = () => {
     matchId: string,
     response: 'accepted' | 'declined'
   ) => {
-    console.group('Respond to Match');
-    console.log('Input parameters:', {
+    console.group('Match Response Flow');
+    console.log('1. Starting match response in useMatchRegistration:', {
       dropId,
       matchId,
       response,
-      userId: user?.uid
+      userId: user?.uid,
+      timestamp: new Date().toISOString()
     });
 
     // Validate inputs
     if (!dropId) {
-      console.error('Missing dropId');
+      console.error('Validation Error: Missing dropId');
       console.groupEnd();
       return false;
     }
     if (!matchId) {
-      console.error('Missing matchId');
+      console.error('Validation Error: Missing matchId');
       console.groupEnd();
       return false;
     }
     if (!user?.uid) {
-      console.error('No authenticated user');
+      console.error('Validation Error: No authenticated user');
       console.groupEnd();
       return false;
     }
@@ -54,6 +55,14 @@ export const useMatchRegistration = () => {
     try {
       setIsRegistering(true);
       
+      console.log('2. Calling MatchRegistrationService.registerMatchResponse with:', {
+        dropId,
+        matchId,
+        userId: user.uid,
+        response,
+        timestamp: new Date().toISOString()
+      });
+
       const success = await MatchRegistrationService.registerMatchResponse(
         dropId,
         matchId,
@@ -61,7 +70,10 @@ export const useMatchRegistration = () => {
         response
       );
 
-      console.log('Match response registration result:', success);
+      console.log('3. Match response registration result:', {
+        success,
+        timestamp: new Date().toISOString()
+      });
 
       if (success) {
         toast({
@@ -84,7 +96,7 @@ export const useMatchRegistration = () => {
       console.groupEnd();
       return success;
     } catch (error) {
-      console.error('Match response error:', error);
+      console.error('4. Match response error:', error);
       toast({
         title: 'Error',
         description: 'An unexpected error occurred',
