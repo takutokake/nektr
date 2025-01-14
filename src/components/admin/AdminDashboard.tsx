@@ -635,21 +635,28 @@ export default function AdminDashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchDropsList();
-  }, []);
-
   const renderDropMatches = (dropId: string) => {
     const dropMatches = matches[dropId];
     
+    // If matches is undefined or null, return a "no matches" message
     if (!dropMatches) {
-      return <Text color="gray.500">No matches found</Text>;
+      return (
+        <Text color="gray.500" p={4}>
+          No matches found for this drop
+        </Text>
+      );
     }
 
-    if (Object.keys(dropMatches.matches).length === 0) {
-      return <Text color="gray.500">No matches generated yet</Text>;
+    // If matches exist but are empty, return a "no matches generated" message
+    if (!dropMatches.matches || Object.keys(dropMatches.matches).length === 0) {
+      return (
+        <Text color="gray.500" p={4}>
+          No matches generated yet
+        </Text>
+      );
     }
 
+    // Render matches table
     return (
       <Table variant="simple" size="sm">
         <Thead>
@@ -662,49 +669,64 @@ export default function AdminDashboard() {
           </Tr>
         </Thead>
         <Tbody>
-          {Object.entries(dropMatches.matches).map(([matchId, match]) => (
-            <Tr key={matchId}>
-              <Td fontSize="sm">
-                {Object.entries(match.participants).map(([userId, participant], index, arr) => (
-                  <React.Fragment key={userId}>
-                    {participant.name}
-                    {index < arr.length - 1 ? ' & ' : ''}
-                  </React.Fragment>
-                ))}
-              </Td>
-              <Td fontSize="sm">
-                {Object.entries(match.responses || {}).map(([userId, response], index, arr) => (
-                  <React.Fragment key={userId}>
-                    <Badge 
-                      colorScheme={response.response === 'accepted' ? 'green' : 
-                                 response.response === 'declined' ? 'red' : 
-                                 'yellow'}
-                      mr={1}
-                    >
-                      {response.response || 'pending'}
-                    </Badge>
-                  </React.Fragment>
-                ))}
-              </Td>
-              <Td fontSize="sm">{match.compatibility}%</Td>
-              <Td>
-                <Badge 
-                  colorScheme={
-                    match.status === 'confirmed' ? 'green' :
-                    match.status === 'pending' ? 'yellow' :
-                    'red'
-                  }
-                >
-                  {match.status}
-                </Badge>
-              </Td>
-              <Td fontSize="sm">{match.createdAt.toDate().toLocaleDateString()}</Td>
-            </Tr>
-          ))}
+          {Object.entries(dropMatches.matches).map(([matchId, match]) => {
+            // Add an extra safety check for each match
+            if (!match || typeof match !== 'object') {
+              return null;
+            }
+
+            return (
+              <Tr key={matchId}>
+                <Td fontSize="sm">
+                  {match.participants && Object.entries(match.participants).map(([userId, participant], index, arr) => (
+                    <React.Fragment key={userId}>
+                      {participant?.name || 'Unknown Participant'}
+                      {index < arr.length - 1 ? ' & ' : ''}
+                    </React.Fragment>
+                  ))}
+                </Td>
+                <Td fontSize="sm">
+                  {match.responses && Object.entries(match.responses || {}).map(([userId, response], index, arr) => (
+                    <React.Fragment key={userId}>
+                      <Badge 
+                        colorScheme={response?.response === 'accepted' ? 'green' : 
+                                   response?.response === 'declined' ? 'red' : 
+                                   'yellow'}
+                        mr={1}
+                      >
+                        {response?.response || 'pending'}
+                      </Badge>
+                    </React.Fragment>
+                  ))}
+                </Td>
+                <Td fontSize="sm">{match.compatibility || 'N/A'}%</Td>
+                <Td>
+                  <Badge 
+                    colorScheme={
+                      match.status === 'confirmed' ? 'green' :
+                      match.status === 'pending' ? 'yellow' :
+                      'red'
+                    }
+                  >
+                    {match.status || 'Unknown'}
+                  </Badge>
+                </Td>
+                <Td fontSize="sm">
+                  {match.createdAt && match.createdAt.toDate 
+                    ? match.createdAt.toDate().toLocaleDateString() 
+                    : 'Unknown Date'}
+                </Td>
+              </Tr>
+            );
+          }).filter(Boolean)}
         </Tbody>
       </Table>
     );
   };
+
+  useEffect(() => {
+    fetchDropsList();
+  }, []);
 
   const renderDrops = () => {
     const currentTime = new Date();
