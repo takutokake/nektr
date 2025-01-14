@@ -20,10 +20,23 @@ import {
   FaMoneyBillWave, 
   FaCalendarCheck 
 } from 'react-icons/fa';
-import { Timestamp, doc, getDoc, writeBatch } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  writeBatch, 
+  doc, 
+  Timestamp,
+  getDoc,
+  updateDoc
+} from 'firebase/firestore';
 import { Drop, DropParticipants } from '../../types';
 import { db, auth } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { sendNotification } from '../../services/notificationService'; 
+import { matchService } from '../../services/matchService'; // Assuming this service exists
+import { generateDropMatches, getDropMatches } from '../../services/matchingService';
 
 // Extracted pure functions outside the component
 const formatDate = (timestamp: Timestamp) => 
@@ -55,9 +68,32 @@ const calculateTimeLeft = (dropTime: Timestamp): string => {
 // Create a custom hook to manage drop joining logic
 const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
   const [joiningDrops, setJoiningDrops] = useState<Set<string>>(new Set());
+  const [registeredDrops, setRegisteredDrops] = useState<Set<string>>(new Set());
   const [selectedDrop, setSelectedDrop] = useState<string | null>(null);
   const toast = useToast();
   const { user } = useAuth();
+
+  // Load user's registered drops on mount
+  useEffect(() => {
+    const loadRegisteredDrops = async () => {
+      if (!user) return;
+      
+      const registeredSet = new Set<string>();
+      for (const drop of drops) {
+        const participantsRef = doc(db, 'dropParticipants', drop.id);
+        const participantsSnap = await getDoc(participantsRef);
+        if (participantsSnap.exists()) {
+          const data = participantsSnap.data() as DropParticipants;
+          if (data.participants[user.uid]) {
+            registeredSet.add(drop.id);
+          }
+        }
+      }
+      setRegisteredDrops(registeredSet);
+    };
+
+    loadRegisteredDrops();
+  }, [user, drops]);
 
   const joinDrop = useCallback(async (drop: Drop) => {
     const currentUser = user || auth.currentUser;
@@ -75,6 +111,18 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
 
     // Prevent multiple join attempts
     if (joiningDrops.has(drop.id)) return;
+
+    // Check if user has already joined this drop
+    if (registeredDrops.has(drop.id)) {
+      toast({
+        title: "Already Joined",
+        description: "You have already joined this drop",
+        status: "warning",
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
     setSelectedDrop(drop.id);
     setJoiningDrops(prev => new Set(prev).add(drop.id));
@@ -130,6 +178,9 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
         onDropJoin(drop.id);
       }
 
+      // Update local state to reflect registration
+      setRegisteredDrops(prev => new Set(prev).add(drop.id));
+
       toast({
         title: "Success",
         description: "You've successfully joined the drop!",
@@ -154,28 +205,163 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
       });
       setSelectedDrop(null);
     }
-  }, [user, joiningDrops, toast, onDropJoin]);
+  }, [user, joiningDrops, toast, onDropJoin, registeredDrops]);
 
-  return { joiningDrops, selectedDrop, joinDrop };
+  return { joiningDrops, selectedDrop, joinDrop, registeredDrops };
 };
 
-// Create a custom hook for time tracking
+// Restore handleGenerateMatches function
+const handleGenerateMatches = async (drop: Drop) => {
+  try {
+    // Additional check: Verify drop status and match generation status
+    if (drop.status !== 'upcoming' || drop.matchGenerationAttempted) {
+      console.log(`Drop ${drop.id} is not eligible for match generation`);
+      return false;
+    }
+
+    // Check if matches have already been generated for this drop
+    const matchesRef = collection(db, 'matches');
+    const matchQuery = query(
+      matchesRef, 
+      where('dropId', '==', drop.id)
+    );
+    const existingMatchesSnapshot = await getDocs(matchQuery);
+
+    // If matches already exist, do not generate again
+    if (!existingMatchesSnapshot.empty) {
+      console.log(`Matches already exist for drop ${drop.id}`);
+      
+      // Update drop status to prevent future attempts
+      const dropRef = doc(db, 'drops', drop.id);
+      await updateDoc(dropRef, {
+        status: 'matched',
+        matchGenerationAttempted: true
+      });
+      
+      return true; // Indicate that no further action is needed
+    }
+
+    // Fetch participants to ensure we have enough
+    const participantsRef = doc(db, 'dropParticipants', drop.id);
+    const participantsSnap = await getDoc(participantsRef);
+    
+    if (!participantsSnap.exists()) {
+      console.log(`No participants found for drop ${drop.id}`);
+      return false;
+    }
+
+    const participantsData = participantsSnap.data() as DropParticipants;
+    const participants = Object.keys(participantsData.participants || {});
+
+    // Ensure we have at least 2 participants
+    if (participants.length < 2) {
+      console.log(`Insufficient participants for drop ${drop.id}`);
+      return false;
+    }
+
+    // Use the generateDropMatches from matchingService
+    await generateDropMatches(drop.id);
+
+    // Fetch and verify matches
+    const updatedMatches = await getDropMatches(drop.id);
+
+    if (updatedMatches) {
+      // Update drop status to prevent re-generation
+      const dropRef = doc(db, 'drops', drop.id);
+      await updateDoc(dropRef, {
+        status: 'matched',
+        matchGenerationAttempted: true
+      });
+
+      console.log(`Successfully generated ${updatedMatches.totalMatches || 0} matches for drop ${drop.id}`);
+      return true; // Indicate successful match generation
+    }
+
+    return false; // Indicate match generation failed
+  } catch (error) {
+    console.error('Error generating matches:', error);
+    return false; // Indicate match generation failed
+  }
+};
+
+// Modify useDropTimers hook to add robust match generation protection
 const useDropTimers = (drops: Drop[]) => {
   const [timeLeft, setTimeLeft] = useState<{ [key: string]: string }>({});
   const timerRef = useRef<NodeJS.Timeout>();
+  const matchGenerationLock = useRef<{ [dropId: string]: { 
+    timestamp: number, 
+    isGenerating: boolean,
+    matchesGenerated: boolean
+  }}>({});
 
   useEffect(() => {
-    const updateTimers = () => {
+    const updateTimers = async () => {
+      const currentTime = Date.now();
       const newTimeLeft: { [key: string]: string } = {};
-      drops.forEach(drop => {
-        newTimeLeft[drop.id] = calculateTimeLeft(drop.startTime);
-      });
+      
+      for (const drop of drops) {
+        const timeLeftString = calculateTimeLeft(drop.startTime);
+        newTimeLeft[drop.id] = timeLeftString;
+
+        // Prepare lock state for this drop if not exists
+        if (!matchGenerationLock.current[drop.id]) {
+          matchGenerationLock.current[drop.id] = { 
+            timestamp: 0, 
+            isGenerating: false,
+            matchesGenerated: false
+          };
+        }
+
+        // Check if time has ended and match hasn't been generated
+        if (
+          timeLeftString === '00h 00m 00s' && 
+          drop.status === 'upcoming' && 
+          !drop.matchGenerationAttempted
+        ) {
+          const dropLock = matchGenerationLock.current[drop.id];
+          
+          // Prevent concurrent generations and limit to once every 30 seconds
+          const timeSinceLastAttempt = currentTime - dropLock.timestamp;
+          const canAttemptGeneration = 
+            !dropLock.isGenerating && 
+            !dropLock.matchesGenerated &&
+            timeSinceLastAttempt >= 30000;
+
+          if (canAttemptGeneration) {
+            // Set lock to prevent concurrent generations
+            dropLock.isGenerating = true;
+            dropLock.timestamp = currentTime;
+
+            try {
+              const matchGenerated = await handleGenerateMatches(drop);
+              
+              // Mark matches as generated if successful
+              if (matchGenerated) {
+                dropLock.matchesGenerated = true;
+              }
+              
+              // Reset lock after generation attempt
+              dropLock.isGenerating = false;
+            } catch (error) {
+              // Ensure lock is always released
+              dropLock.isGenerating = false;
+              console.error(`Match generation failed for drop ${drop.id}:`, error);
+            }
+          }
+        }
+      }
+
+      // Update time left state
       setTimeLeft(newTimeLeft);
     };
 
+    // Initial update
     updateTimers();
+
+    // Set interval to check every second
     timerRef.current = setInterval(updateTimers, 1000);
 
+    // Cleanup
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -206,7 +392,7 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
 
   // Custom hooks - always called in the same order
   const { timeLeft, futureDrops } = useDropTimers(drops);
-  const { joiningDrops, selectedDrop, joinDrop } = useDropJoin(drops, onDropJoin);
+  const { joiningDrops, selectedDrop, joinDrop, registeredDrops } = useDropJoin(drops, onDropJoin);
   const [participants, setParticipants] = useState<{ [dropId: string]: DropParticipants }>({});
 
   // Fetch participants for each drop
@@ -364,8 +550,9 @@ const UpcomingDrops: React.FC<UpcomingDropsProps> = ({ drops, onDropJoin }) => {
                     isLoading={joiningDrops.has(drop.id)}
                     loadingText="Joining..."
                     onClick={() => joinDrop(drop)}
+                    isDisabled={registeredDrops.has(drop.id)}
                   >
-                    Join Drop
+                    {registeredDrops.has(drop.id) ? 'Registered' : 'Join Drop'}
                   </Button>
 
                   {participants[drop.id] && (

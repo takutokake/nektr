@@ -28,16 +28,20 @@ export interface Drop {
   registeredUsers: string[];
   currentParticipants: number;
   priceRange: string;
-  status: 'upcoming' | 'matched' | 'completed';
+  status: 'upcoming' | 'matched' | 'completed' | 'cancelled';
+  matchGenerationAttempted?: boolean;
 }
 
 export interface MatchResponse {
   status: 'pending' | 'accepted' | 'declined';
+  response?: 'accepted' | 'declined' | 'pending';
   respondedAt: Timestamp;
 }
 
 export interface Match {
   id: string;
+  dropId: string;
+  matchPairs: { [userId: string]: string };
   participants: {
     [userId: string]: UserProfile;
   };
@@ -55,7 +59,6 @@ export interface Match {
   cuisinePreference: string;
   createdAt: Timestamp;
   updatedAt?: Timestamp;
-  dropId: string;
 }
 
 export interface UserProfile {
@@ -191,6 +194,17 @@ export interface MatchOutcome {
   updatedAt?: Timestamp;
 }
 
+export interface Notification {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  data?: Record<string, any>;
+  read: boolean;
+  createdAt: Timestamp;
+  sender: string;
+}
+
 // Default factory functions to help with initialization
 export const defaultUserProfile: UserProfile = {
   id: '',
@@ -223,11 +237,14 @@ export const createDefaultDrop = (partialDrop: Partial<Drop> = {}): Drop => ({
   registeredUsers: partialDrop.registeredUsers || [],
   currentParticipants: partialDrop.currentParticipants || 0,
   priceRange: partialDrop.priceRange || '$',
-  status: partialDrop.status || 'upcoming'
+  status: partialDrop.status || 'upcoming',
+  matchGenerationAttempted: partialDrop.matchGenerationAttempted
 });
 
 export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => ({
   id: partialMatch.id || '',
+  dropId: partialMatch.dropId || '',
+  matchPairs: partialMatch.matchPairs || {},
   participants: partialMatch.participants || {},
   responses: partialMatch.responses || {},
   compatibility: partialMatch.compatibility || 0,
@@ -238,10 +255,9 @@ export const createDefaultMatch = (partialMatch: Partial<Match> = {}): Match => 
     location: 'TBD',
     time: Timestamp.now(),
   },
-  cuisinePreference: partialMatch.cuisinePreference || '', // Changed to provide a default value
+  cuisinePreference: partialMatch.cuisinePreference || '', 
   createdAt: partialMatch.createdAt || Timestamp.now(),
   updatedAt: partialMatch.updatedAt,
-  dropId: partialMatch.dropId || '',
 });
 
 export const createUserProfile = (partialUser: Partial<UserProfile>): UserProfile => ({

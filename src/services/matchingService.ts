@@ -304,10 +304,15 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
 
     // Generate matches
     const matches: any[] = [];
+    const matchedUsers = new Set<string>();
+
     for (let i = 0; i < validParticipantIds.length; i++) {
       for (let j = i + 1; j < validParticipantIds.length; j++) {
         const user1Id = validParticipantIds[i];
         const user2Id = validParticipantIds[j];
+
+        // Skip if either user is already matched
+        if (matchedUsers.has(user1Id) || matchedUsers.has(user2Id)) continue;
 
         const user1Profile = userProfiles.get(user1Id);
         const user2Profile = userProfiles.get(user2Id);
@@ -392,6 +397,9 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
           };
 
           matches.push(match);
+          // Mark both users as matched
+          matchedUsers.add(user1Id);
+          matchedUsers.add(user2Id);
         }
       }
     }
@@ -417,7 +425,8 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
     const dropMatchesRef = doc(db, 'dropMatches', dropId);
     batch.set(dropMatchesRef, matchData);
 
-    // Create notifications for both users
+    // Create notifications for both matched and unmatched users
+    // First, handle matched users
     matches.forEach(match => {
       const createNotificationForUser = (userId: string, matchedUserId: string, matchedUserName: string) => {
         const notificationRef = doc(collection(db, 'users', userId, 'notifications'));
@@ -464,6 +473,25 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
         createNotificationForUser(user1Entry[0], user2Entry[0], user2Name);
         createNotificationForUser(user2Entry[0], user1Entry[0], user1Name);
       }
+    });
+
+    // Handle unmatched users
+    const unmatchedUsers = validParticipantIds.filter(id => !matchedUsers.has(id));
+    unmatchedUsers.forEach(userId => {
+      const notificationRef = doc(collection(db, 'users', userId, 'notifications'));
+      const notification = {
+        type: 'no-match',
+        title: 'Maybe Next Time',
+        message: `We couldn't find a match for you in this drop. Don't worry, keep trying!`,
+        read: false,
+        createdAt: Timestamp.now(),
+        actionTaken: false,
+        dropDetails: {
+          dropId: dropId,
+          dropTitle: dropData.title
+        }
+      };
+      batch.set(notificationRef, notification);
     });
 
     // Commit batch

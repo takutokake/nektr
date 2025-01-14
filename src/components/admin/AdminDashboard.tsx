@@ -273,29 +273,26 @@ const MatchOutcomesTable: React.FC = () => {
     );
   };
 
-  const renderParticipants = useCallback((match: MatchOutcome) => {
-    const uniqueParticipants = new Set(Object.keys(match.participants || {}));
-    
-    return Array.from(uniqueParticipants).map((userId) => {
-      const participant = match.participants[userId];
-      
-      return (
-        <Box key={userId}>
-          {participant?.profile?.displayName || 
-           participant?.profile?.name || 
-           participant?.profile?.email || 
-           userId}
-          {' '}
-          <Badge 
-            colorScheme={participant?.response === 'yes' ? 'green' : 'red'}
-            ml={2}
-          >
-            {participant?.response || 'pending'}
-          </Badge>
-        </Box>
-      );
-    });
-  }, []);
+  const renderParticipants = (match: MatchOutcome) => {
+    return (
+      <Box>
+        {Object.entries(match.participants).map(([userId, participant]) => (
+          <Box key={userId} display="flex" alignItems="center" mb={1}>
+            {participant.profile?.displayName || 
+             participant.profile?.name || 
+             participant.profile?.email || 
+             userId}{' '}
+            <Badge 
+              colorScheme={participant.response === 'yes' ? 'green' : 'red'}
+              ml={2}
+            >
+              {participant.response === 'yes' ? 'Accepted' : 'Declined'}
+            </Badge>
+          </Box>
+        ))}
+      </Box>
+    );
+  };
 
   const renderMatchOutcomesTable = () => {
     if (isLoading) {
