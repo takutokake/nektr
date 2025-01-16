@@ -211,37 +211,44 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
 };
 
 // Restore handleGenerateMatches function
-const handleGenerateMatches = async (drop: Drop) => {
+const handleGenerateMatches = async (drop: Drop): Promise<boolean> => {
   try {
-    // Additional check: Verify drop status and match generation status
-    if (drop.status !== 'upcoming' || drop.matchGenerationAttempted) {
-      console.log(`Drop ${drop.id} is not eligible for match generation`);
+    // Additional check: Verify drop status and match generation count
+    if (drop.status !== 'upcoming') {
+      console.log(`Drop ${drop.id} is not eligible for match generation - incorrect status`, {
+        status: drop.status
+      });
       return false;
     }
 
-    // Check if matches have already been generated for this drop
-    const matchesRef = collection(db, 'matches');
-    const matchQuery = query(
-      matchesRef, 
-      where('dropId', '==', drop.id)
-    );
-    const existingMatchesSnapshot = await getDocs(matchQuery);
-
-    // If matches already exist, do not generate again
-    if (!existingMatchesSnapshot.empty) {
-      console.log(`Matches already exist for drop ${drop.id}`);
-      
-      // Update drop status to prevent future attempts
-      const dropRef = doc(db, 'drops', drop.id);
-      await updateDoc(dropRef, {
-        status: 'matched',
-        matchGenerationAttempted: true
-      });
-      
-      return true; // Indicate that no further action is needed
+    const dropRef = doc(db, 'drops', drop.id);
+    const dropSnap = await getDoc(dropRef);
+    
+    if (!dropSnap.exists()) {
+      console.error('Drop does not exist', { dropId: drop.id });
+      return false;
     }
 
-    // Fetch participants to ensure we have enough
+    const dropData = dropSnap.data();
+    const matchGenerationCount = dropData.matchGenerationCount || 0;
+
+    if (matchGenerationCount > 0) {
+      console.log(`Matches have already been generated for drop ${drop.id}`, {
+        matchGenerationCount
+      });
+      return true;
+    }
+
+    // Check if matches already exist in dropMatches collection
+    const dropMatchesRef = doc(db, 'dropMatches', drop.id);
+    const dropMatchesSnap = await getDoc(dropMatchesRef);
+
+    if (dropMatchesSnap.exists()) {
+      console.log(`Matches already exist in dropMatches collection for drop ${drop.id}`);
+      return true;
+    }
+
+    // Get participants
     const participantsRef = doc(db, 'dropParticipants', drop.id);
     const participantsSnap = await getDoc(participantsRef);
     
@@ -251,7 +258,7 @@ const handleGenerateMatches = async (drop: Drop) => {
     }
 
     const participantsData = participantsSnap.data() as DropParticipants;
-    const participants = Object.keys(participantsData.participants || {});
+    const participants = Object.keys(participantsData.participants);
 
     // Ensure we have at least 2 participants
     if (participants.length < 2) {
@@ -259,28 +266,21 @@ const handleGenerateMatches = async (drop: Drop) => {
       return false;
     }
 
-    // Use the generateDropMatches from matchingService
+    // Generate matches
     await generateDropMatches(drop.id);
 
-    // Fetch and verify matches
-    const updatedMatches = await getDropMatches(drop.id);
+    // Update drop status
+    await updateDoc(dropRef, {
+      status: 'matched',
+      matchGenerationCount: 1,
+      updatedAt: Timestamp.now()
+    });
 
-    if (updatedMatches) {
-      // Update drop status to prevent re-generation
-      const dropRef = doc(db, 'drops', drop.id);
-      await updateDoc(dropRef, {
-        status: 'matched',
-        matchGenerationAttempted: true
-      });
-
-      console.log(`Successfully generated ${updatedMatches.totalMatches || 0} matches for drop ${drop.id}`);
-      return true; // Indicate successful match generation
-    }
-
-    return false; // Indicate match generation failed
+    console.log(`Successfully generated matches for drop ${drop.id}`);
+    return true;
   } catch (error) {
     console.error('Error generating matches:', error);
-    return false; // Indicate match generation failed
+    return false;
   }
 };
 

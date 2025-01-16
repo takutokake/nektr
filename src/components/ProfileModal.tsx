@@ -50,12 +50,16 @@ const LOCATIONS: LocationOption[] = [
 
 const INTERESTS = [
   'Technology', 'Arts', 'Sports', 'Music', 'Travel', 
-  'Food', 'Photography', 'Gaming', 'Fitness', 'Movies'
+  'Food', 'Photography', 'Gaming', 'Fitness', 'Movies',
+  'Startups', 'Business', 'Politics', 'Health', 'Science',
+  'Fashion', 'Dance', 'Cooking', 'Culinary', 'Gardening'
 ];
 
 const CUISINES = [
   'Italian', 'Japanese', 'Mexican', 'Chinese', 'Indian', 
-  'Thai', 'Mediterranean', 'American', 'Korean', 'French'
+  'Thai', 'Mediterranean', 'American', 'Korean', 'French',
+  'Spanish', 'Vietnamese', 'Greek', 'Turkish', 'Argentinian',
+  'Irish', 'Greek', 'Polish', 'Czech', 'Russian'
 ];
 
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];

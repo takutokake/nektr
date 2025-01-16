@@ -9,7 +9,8 @@ import {
   documentId, 
   getDocs,
   QueryDocumentSnapshot,
-  setDoc
+  setDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { 
@@ -262,29 +263,62 @@ const getCommonOrRandomCuisine = (user1Cuisines: string[], user2Cuisines: string
 // Generate matches for a specific drop
 export const generateDropMatches = async (dropId: string): Promise<void> => {
   try {
-    // Fetch drop details
+    console.group('Generate Drop Matches');
+    console.log('Starting match generation for drop:', { dropId });
+
+    // First check if matches already exist in dropMatches collection
+    const dropMatchesRef = doc(db, 'dropMatches', dropId);
+    const dropMatchesSnap = await getDoc(dropMatchesRef);
+    
+    if (dropMatchesSnap.exists()) {
+      console.log('Matches already exist in dropMatches collection. Skipping generation.', {
+        dropId,
+        existingMatches: true
+      });
+      console.groupEnd();
+      return;
+    }
+
+    // Fetch drop details and check match generation count
     const dropRef = doc(db, 'drops', dropId);
     const dropSnap = await getDoc(dropRef);
     const dropData = dropSnap.data() as any;
 
     if (!dropData) {
+      console.error('Drop does not exist', { dropId });
+      console.groupEnd();
       return;
     }
+
+    // Check match generation count
+    const matchGenerationCount = dropData.matchGenerationCount || 0;
+    if (matchGenerationCount > 0) {
+      console.log('Matches have already been generated once for this drop. Skipping.', {
+        dropId,
+        matchGenerationCount
+      });
+      console.groupEnd();
+      return;
+    }
+
+    // Mark the drop as being processed and increment generation count
+    await updateDoc(dropRef, {
+      matchGenerationCount: 1,
+      matchGenerationAttempted: true,
+      matchGenerationStartedAt: Timestamp.now()
+    });
 
     // Fetch participants for this drop
     const participantsRef = doc(db, 'dropParticipants', dropId);
     const participantsSnap = await getDoc(participantsRef);
 
-    const participantsData = participantsSnap.exists() 
-      ? (participantsSnap.data() as any) 
-      : { 
-          dropId: dropId, 
-          dropName: dropData.title,
-          registeredAt: Timestamp.now(),
-          participants: {}, 
-          totalParticipants: 0,
-          maxParticipants: dropData.maxParticipants || 10
-        };
+    if (!participantsSnap.exists()) {
+      console.error('No participants found for drop', { dropId });
+      console.groupEnd();
+      return;
+    }
+
+    const participantsData = participantsSnap.data() as any;
 
     const participantIds = Object.keys(participantsData.participants);
     const userRefs = participantIds.map(id => doc(db, 'users', id));
@@ -405,7 +439,7 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
     }
 
     // Prepare matches document
-    const matchData: any = {
+    const matchData: DropMatches = {
       dropId,
       dropName: dropData.title,  
       matches: {},
@@ -422,7 +456,6 @@ export const generateDropMatches = async (dropId: string): Promise<void> => {
     });
 
     // Save drop matches
-    const dropMatchesRef = doc(db, 'dropMatches', dropId);
     batch.set(dropMatchesRef, matchData);
 
     // Create notifications for both matched and unmatched users
