@@ -21,6 +21,7 @@ import {
   AuthError 
 } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
+import { useNavigate } from 'react-router-dom';
 
 // Custom theme with the new color
 const theme = extendTheme({
@@ -63,6 +64,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,28 +92,18 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
 
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast({
-        title: 'Error',
-        description: 'Please fill in all fields',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setIsLoading(true);
     try {
-      console.log('Attempting login with email');
+      setIsLoading(true);
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      onAuthSuccess(userCredential.user);
-      console.log('Login successful');
-    } catch (error: any) {
+      if (userCredential.user) {
+        console.log('Login successful');
+        navigate('/home');
+      }
+    } catch (error) {
       console.error('Login error:', error);
       toast({
-        title: 'Sign In Error',
-        description: error.message || 'Failed to sign in',
+        title: 'Error',
+        description: 'Failed to log in. Please check your credentials.',
         status: 'error',
         duration: 3000,
         isClosable: true,
@@ -123,37 +115,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess = () => {} }) => {
 
   const handleGoogleSignIn = async () => {
     try {
+      setIsLoading(true);
       const result = await signInWithPopup(auth, googleProvider);
-      onAuthSuccess(result.user);
+      if (result.user) {
+        navigate('/home');
+      }
+    } catch (error) {
+      console.error('Google sign-in error:', error);
       toast({
-        title: 'Google Sign In',
-        description: "Successfully signed in with Google!",
-        status: 'success',
+        title: 'Error',
+        description: 'Failed to sign in with Google',
+        status: 'error',
         duration: 3000,
         isClosable: true,
       });
-    } catch (e: unknown) {
-      const error = e as AuthError;
-      console.error('Google Sign-In Error:', error);
-      
-      // Specific error handling for unauthorized domain
-      if (error.code === 'auth/unauthorized-domain') {
-        toast({
-          title: 'Authentication Error',
-          description: 'Unauthorized domain. Please add your domain to Firebase authorized domains.',
-          status: 'error',
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        toast({
-          title: 'Google Sign In Error',
-          description: error.message || 'Failed to sign in with Google',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      }
+    } finally {
+      setIsLoading(false);
     }
   };
 

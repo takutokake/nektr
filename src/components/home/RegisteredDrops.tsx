@@ -101,7 +101,13 @@ const RegisteredDrops: React.FC<RegisteredDropsProps> = ({ drops, onDropUnregist
   };
 
   const fetchRegisteredDrops = async () => {
-    if (!auth.currentUser) return;
+    // If no user is logged in, clear drops and return
+    if (!auth.currentUser) {
+      setRegisteredDrops([]);
+      setRegisteredDropsCache({});
+      setParticipantsCache({});
+      return;
+    }
 
     try {
       setLoading(true);

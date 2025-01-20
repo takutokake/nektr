@@ -25,6 +25,7 @@ import {
   Center
 } from '@chakra-ui/react';
 import { FaCog, FaSignOutAlt, FaUser } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 import { UserProfile, Drop } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import ProfileModal from '../ProfileModal';
@@ -61,6 +62,7 @@ interface HomePageProps {
 const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const { logout } = useAuth();
   const { respondToMatch } = useMatchRegistration();
+  const navigate = useNavigate();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [dropsData, setDropsData] = useState<Drop[]>([]);
   const [dropsCache, setDropsCache] = useState<{[key: string]: Drop}>({});
@@ -106,6 +108,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
       if (onSignOut) {
         onSignOut();
       }
+      navigate('/');  
       toast({
         title: 'Logged Out',
         description: 'You have been successfully logged out.',
@@ -170,7 +173,12 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         user.tempDisableAdmin = !user.tempDisableAdmin;
       }
       
-      window.location.reload();
+      // Navigate to admin dashboard when enabling admin mode
+      if (!user.tempDisableAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/home');
+      }
     } catch (error) {
       console.error('Error toggling admin mode:', error);
       toast({
@@ -547,6 +555,10 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
     }
   }, [user?.uid]);
 
+  const goToAdmin = () => {
+    navigate('/admin');
+  };
+
   return (
     <Box minH="100vh" bg={bgColor}>
       {/* Top Navigation Bar */}
@@ -563,7 +575,8 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
           <Image 
             src="/nectr-logo.png" 
             alt="Nectr Logo" 
-            boxSize="50px" 
+            boxSize="60px" 
+            objectFit="contain"
             mr={1}
           />
           <Heading 

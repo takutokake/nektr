@@ -58,19 +58,109 @@ const calculateMatchScoreFromProfiles = (
   user1Profile: UserProfile,
   user2Profile: UserProfile
 ): number => {
-  let score = 0;
-  const commonInterests = user1Profile.interests?.filter(
-    interest => user2Profile.interests?.includes(interest)
-  ) || [];
-  const commonCuisines = user1Profile.cuisines?.filter(
-    cuisine => user2Profile.cuisines?.includes(cuisine)
-  ) || [];
+  let totalScore = 0;
 
-  score += commonInterests.length * 10;
-  score += commonCuisines.length * 15;
+  // Location Similarity (50%)
+  const locationScore = user1Profile.location && user2Profile.location
+    ? calculateLocationSimilarity(
+        user1Profile.location, 
+        user2Profile.location
+      ) * 50 
+    : 0;
+  
+  // Meeting Preference Similarity (10%)
+  const meetingPreferenceScore = user1Profile.meetingPreference && user2Profile.meetingPreference
+    ? calculateMeetingPreferenceSimilarity(
+        Array.isArray(user1Profile.meetingPreference) ? user1Profile.meetingPreference : [], 
+        Array.isArray(user2Profile.meetingPreference) ? user2Profile.meetingPreference : []
+      ) * 10
+    : 0;
+  
+  // Interests Similarity (30%)
+  const interestScore = user1Profile.interests && user2Profile.interests
+    ? calculateInterestSimilarity(
+        Array.isArray(user1Profile.interests) ? user1Profile.interests : [], 
+        Array.isArray(user2Profile.interests) ? user2Profile.interests : []
+      ) * 30
+    : 0;
+  
+  // Cuisine Preference Similarity (10%)
+  const cuisineScore = user1Profile.cuisinePreferences && user2Profile.cuisinePreferences
+    ? calculateCuisineSimilarity(
+        Array.isArray(user1Profile.cuisinePreferences) ? user1Profile.cuisinePreferences : [], 
+        Array.isArray(user2Profile.cuisinePreferences) ? user2Profile.cuisinePreferences : []
+      ) * 10
+    : 0;
 
-  return score;
-};
+  // Calculate total score
+  totalScore = locationScore + meetingPreferenceScore + interestScore + cuisineScore;
+
+  // Ensure a minimum match score, cap at 100, and round to nearest integer
+  return Math.min(Math.max(Math.round(totalScore), 1), 100);
+}
+
+// Helper function to calculate location similarity
+function calculateLocationSimilarity(
+  location1: string, 
+  location2: string
+): number {
+  // If locations are exactly the same, return full score
+  if (location1 === location2) return 1;
+
+  // If locations are different, return 0
+  return 0;
+}
+
+// Helper function to calculate meeting preference similarity
+function calculateMeetingPreferenceSimilarity(
+  meetingPreferences1: string[], 
+  meetingPreferences2: string[]
+): number {
+  // Calculate common preferences
+  const commonPreferences = meetingPreferences1.filter(pref => 
+    meetingPreferences2.includes(pref)
+  );
+
+  // Score based on common preferences
+  return commonPreferences.length / Math.max(
+    meetingPreferences1.length, 
+    meetingPreferences2.length
+  ) || 0;
+}
+
+// Helper function to calculate interest similarity
+function calculateInterestSimilarity(
+  interests1: string[], 
+  interests2: string[]
+): number {
+  // Calculate common interests
+  const commonInterests = interests1.filter(interest => 
+    interests2.includes(interest)
+  );
+
+  // Score based on common interests
+  return commonInterests.length / Math.max(
+    interests1.length, 
+    interests2.length
+  ) || 0;
+}
+
+// Helper function to calculate cuisine similarity
+function calculateCuisineSimilarity(
+  cuisines1: string[], 
+  cuisines2: string[]
+): number {
+  // Calculate common cuisines
+  const commonCuisines = cuisines1.filter(cuisine => 
+    cuisines2.includes(cuisine)
+  );
+
+  // Score based on common cuisines
+  return commonCuisines.length / Math.max(
+    cuisines1.length, 
+    cuisines2.length
+  ) || 0;
+}
 
 // Helper function to convert partial participant to full UserProfile
 const convertToUserProfile = (participant: { 

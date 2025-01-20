@@ -31,7 +31,9 @@ import {
   Alert,
   AlertIcon,
   AlertTitle,
-  AlertDescription
+  AlertDescription,
+  Image,
+  Spacer
 } from '@chakra-ui/react';
 import { 
   collection, 
@@ -60,6 +62,7 @@ import AdminDrops from './AdminDrops';
 import { MatchingTest } from '../debug/MatchingTest';
 import { FaRegSadTear } from 'react-icons/fa';
 import { FiInbox } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 
 const SuccessfulMatchesTable: React.FC = () => {
   const [successfulMatches, setSuccessfulMatches] = useState<any[]>([]);
@@ -463,49 +466,57 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [isAdminMode, setIsAdminMode] = useState(true);
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     try {
       await logout();
-    } catch (error) {
-      console.error('Error signing out:', error);
+      navigate('/');  // Navigate to landing page
       toast({
-        title: 'Error signing out',
+        title: 'Logged Out',
+        description: 'Successfully logged out',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to log out',
         status: 'error',
         duration: 3000,
+        isClosable: true,
       });
     }
   };
 
   const toggleAdminMode = async () => {
+    if (!user) return;
+    
+    setLoading(true);
     try {
-      if (!user) return;
-      
-      setLoading(true);
       const userRef = doc(db, 'users', user.uid);
-      
       await updateDoc(userRef, {
-        tempDisableAdmin: true
+        tempDisableAdmin: user.tempDisableAdmin ? false : true
       });
       
-      toast({
-        title: 'Switching to User Mode',
-        description: 'Redirecting to homepage...',
-        status: 'success',
-        duration: 1500,
-      });
+      if (user) {
+        user.tempDisableAdmin = !user.tempDisableAdmin;
+      }
       
-      setTimeout(() => {
-        window.location.replace('/');
-      }, 1000);
-      
+      // Navigate to home page when disabling admin mode
+      if (user.tempDisableAdmin) {
+        navigate('/home');
+      }
     } catch (error) {
       console.error('Error toggling admin mode:', error);
       toast({
-        title: 'Error switching to user mode',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        title: 'Error',
+        description: 'Failed to toggle admin mode',
         status: 'error',
         duration: 3000,
+        isClosable: true,
       });
     } finally {
       setLoading(false);
@@ -811,109 +822,154 @@ export default function AdminDashboard() {
   }
 
   return (
-    <Box p={6}>
-      <VStack spacing={6} align="stretch">
-        <HStack justify="space-between" align="center">
-          <Text fontSize="2xl" fontWeight="bold">Admin Dashboard</Text>
-          <HStack spacing={4}>
-            <FormControl display="flex" alignItems="center">
-              <FormLabel htmlFor="admin-mode" mb="0">
-                Admin Mode
-              </FormLabel>
-              <Switch
-                id="admin-mode"
-                isChecked={isAdminMode}
-                onChange={toggleAdminMode}
-              />
-            </FormControl>
-            <Button colorScheme="red" onClick={handleSignOut}>
-              Sign Out
-            </Button>
-          </HStack>
+    <Box minH="100vh" bg={useColorModeValue('gray.50', 'gray.900')}>
+      {/* Top Navigation Bar */}
+      <Flex
+        as="nav"
+        align="center"
+        justify="space-between"
+        wrap="wrap"
+        padding="1rem"
+        bg={useColorModeValue('white', 'gray.800')}
+        color={useColorModeValue('gray.600', 'white')}
+        boxShadow="md"
+      >
+        <HStack spacing={0} alignItems="center">
+          <Image 
+            src="/nectr-logo.png" 
+            alt="Nectr Logo" 
+            boxSize="60px" 
+            objectFit="contain"
+            mr={1}
+          />
+          <Heading 
+            size="lg" 
+            color="#FDAA25" 
+            fontWeight="bold"
+          >
+            Nektr Admin
+          </Heading>
         </HStack>
 
-        <Tabs>
-          <TabList>
-            <Tab>Drops</Tab>
-            <Tab>Matches</Tab>
-            <Tab>Match Outcomes</Tab>
-            <Tab>Successful Matches</Tab>
-            <Tab>Create Drop</Tab>
-            <Tab>Test Matching</Tab>
-          </TabList>
+        <Spacer />
 
-          <TabPanels>
-            <TabPanel>
-              <VStack spacing={4} align="stretch">
-                <Heading size="md">Drops</Heading>
-                {loading ? (
-                  <Flex justify="center" align="center" height="200px">
-                    <Spinner />
-                  </Flex>
-                ) : (
-                  renderDrops()
-                )}
-              </VStack>
-            </TabPanel>
+        <HStack spacing={4}>
+          <HStack spacing={2}>
+            <Text>Admin Mode</Text>
+            <Switch
+              isChecked={!user?.tempDisableAdmin}
+              onChange={toggleAdminMode}
+              isDisabled={loading}
+              colorScheme="blue"
+            />
+          </HStack>
+        </HStack>
+      </Flex>
 
-            <TabPanel>
-              <VStack spacing={4} align="stretch">
-                <Heading size="md">Recent Matches</Heading>
-                <Table variant="simple">
-                  <Thead>
-                    <Tr>
-                      <Th>Drop</Th>
-                      <Th>Users</Th>
-                      <Th>Compatibility</Th>
-                      <Th>Status</Th>
-                      <Th>Common Interests</Th>
-                      <Th>Common Cuisines</Th>
-                    </Tr>
-                  </Thead>
-                  <Tbody>
-                    {/* matches.map((match) => (
-                      <Tr key={match.id}>
-                        <Td>{match.dropId}</Td>
-                        <Td>{match.users.join(', ')}</Td>
-                        <Td>{match.compatibilityScore}%</Td>
-                        <Td>
-                          <Badge 
-                            colorScheme={
-                              match.status === 'confirmed' ? 'green' :
-                              match.status === 'pending' ? 'yellow' :
-                              'red'
-                            }
-                          >
-                            {match.status}
-                          </Badge>
-                        </Td>
-                        <Td>{match.commonInterests.join(', ')}</Td>
-                        <Td>{match.commonCuisines.join(', ')}</Td>
+      <Box p={6}>
+        <VStack spacing={6} align="stretch">
+          <HStack justify="space-between" align="center">
+            <Text fontSize="2xl" fontWeight="bold">Admin Dashboard</Text>
+            <HStack spacing={4}>
+              <FormControl display="flex" alignItems="center">
+                <FormLabel htmlFor="admin-mode" mb="0">
+                  Admin Mode
+                </FormLabel>
+                <Switch
+                  id="admin-mode"
+                  isChecked={isAdminMode}
+                  onChange={toggleAdminMode}
+                />
+              </FormControl>
+              <Button colorScheme="red" onClick={handleSignOut}>
+                Sign Out
+              </Button>
+            </HStack>
+          </HStack>
+
+          <Tabs>
+            <TabList>
+              <Tab>Drops</Tab>
+              <Tab>Matches</Tab>
+              <Tab>Match Outcomes</Tab>
+              <Tab>Successful Matches</Tab>
+              <Tab>Create Drop</Tab>
+              <Tab>Test Matching</Tab>
+            </TabList>
+
+            <TabPanels>
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  <Heading size="md">Drops</Heading>
+                  {loading ? (
+                    <Flex justify="center" align="center" height="200px">
+                      <Spinner />
+                    </Flex>
+                  ) : (
+                    renderDrops()
+                  )}
+                </VStack>
+              </TabPanel>
+
+              <TabPanel>
+                <VStack spacing={4} align="stretch">
+                  <Heading size="md">Recent Matches</Heading>
+                  <Table variant="simple">
+                    <Thead>
+                      <Tr>
+                        <Th>Drop</Th>
+                        <Th>Users</Th>
+                        <Th>Compatibility</Th>
+                        <Th>Status</Th>
+                        <Th>Common Interests</Th>
+                        <Th>Common Cuisines</Th>
                       </Tr>
-                    )) */}
-                  </Tbody>
-                </Table>
-              </VStack>
-            </TabPanel>
+                    </Thead>
+                    <Tbody>
+                      {/* matches.map((match) => (
+                        <Tr key={match.id}>
+                          <Td>{match.dropId}</Td>
+                          <Td>{match.users.join(', ')}</Td>
+                          <Td>{match.compatibilityScore}%</Td>
+                          <Td>
+                            <Badge 
+                              colorScheme={
+                                match.status === 'confirmed' ? 'green' :
+                                match.status === 'pending' ? 'yellow' :
+                                'red'
+                              }
+                            >
+                              {match.status}
+                            </Badge>
+                          </Td>
+                          <Td>{match.commonInterests.join(', ')}</Td>
+                          <Td>{match.commonCuisines.join(', ')}</Td>
+                        </Tr>
+                      )) */}
+                    </Tbody>
+                  </Table>
+                </VStack>
+              </TabPanel>
 
-            <TabPanel>
-              <MatchOutcomesTable />
-            </TabPanel>
+              <TabPanel>
+                <MatchOutcomesTable />
+              </TabPanel>
 
-            <TabPanel>
-              <SuccessfulMatchesTable />
-            </TabPanel>
+              <TabPanel>
+                <SuccessfulMatchesTable />
+              </TabPanel>
 
-            <TabPanel>
-              <AdminDrops />
-            </TabPanel>
+              <TabPanel>
+                <AdminDrops />
+              </TabPanel>
 
-            <TabPanel>
-              <MatchingTest />
-            </TabPanel>
-          </TabPanels>
-        </Tabs>
-      </VStack>
+              <TabPanel>
+                <MatchingTest />
+              </TabPanel>
+            </TabPanels>
+          </Tabs>
+        </VStack>
+      </Box>
     </Box>
   );
 }

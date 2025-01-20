@@ -6,6 +6,9 @@ import Auth from './components/Auth'
 import HomePage from './components/home/HomePage'
 import AdminDashboard from './components/admin/AdminDashboard'
 import ProfileCreation from './components/ProfileCreation'
+import LandingPage from './pages/LandingPage'  
+import PrivacyPolicy from './pages/PrivacyPolicy' 
+import TermsOfService from './pages/TermsOfService' // Add this line
 import { Drop, UserProfile } from './types'
 import { dropsService } from './services/dropsService'
 import { db } from './firebase'
@@ -31,13 +34,6 @@ function App() {
         setHasMoreDrops(hasMore);
       } catch (error) {
         console.error('Error fetching drops:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch drops',
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
       } finally {
         setDropsLoading(false);
       }
@@ -46,45 +42,36 @@ function App() {
     if (user) {
       fetchDrops();
     }
-  }, [user?.uid, toast]);
-
-  const handleLogout = async () => {
-    try {
-      await logout?.();
-      navigate('/');
-    } catch (error) {
-      console.error('Error logging out:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to log out',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    }
-  };
-
-  const fetchUserProfile = async () => {
-    if (!user) return;
-    
-    try {
-      const userRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userRef);
-      
-      if (userDoc.exists()) {
-        const userData = userDoc.data() as UserProfile;
-        setUserProfile(userData);
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-    }
-  };
+  }, [user?.uid]);
 
   useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user?.uid) {
+        try {
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          if (userDocSnap.exists()) {
+            setUserProfile(userDocSnap.data() as UserProfile);
+          }
+        } catch (error) {
+          console.error('Error fetching user profile:', error);
+        }
+      }
+    };
+
     if (user) {
       fetchUserProfile();
     }
   }, [user]);
+
+  const handleLogout = async () => {
+    try {
+      await logout?.();
+      navigate('/', { replace: true });
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
 
   if (loading) {
     return (
@@ -98,33 +85,64 @@ function App() {
     return <div>Error: {error.message}</div>;
   }
 
-  if (!user) {
-    return <Auth />;
-  }
-
-  // Check if user needs to complete profile
-  if (!userProfile || !userProfile.displayName || userProfile.interests.length === 0) {
-    return <ProfileCreation 
-      user={user} 
-      onComplete={() => {
-        fetchUserProfile();
-        // Optionally, you can add navigation or other logic here
-      }} 
-    />;
-  }
-
   return (
-    <Box minH="100vh">
-      {user.isAdmin && !user.tempDisableAdmin ? (
-        <AdminDashboard />
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/auth" element={<Auth />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} /> 
+      <Route path="/terms" element={<TermsOfService />} /> // Add this line
+
+      {/* Protected Routes */}
+      {user ? (
+        <>
+          <Route path="/home" element={
+            (!userProfile || !userProfile.displayName || userProfile.interests.length === 0) ? (
+              <ProfileCreation 
+                user={user} 
+                onComplete={() => {
+                  const fetchUserProfile = async () => {
+                    if (user?.uid) {
+                      const userDocRef = doc(db, 'users', user.uid);
+                      const userDocSnap = await getDoc(userDocRef);
+                      if (userDocSnap.exists()) {
+                        setUserProfile(userDocSnap.data() as UserProfile);
+                      }
+                    }
+                  };
+                  fetchUserProfile();
+                  navigate('/home');
+                }} 
+              />
+            ) : (
+              <HomePage 
+                user={user}
+                drops={drops}
+                onSignOut={handleLogout}
+              />
+            )
+          } />
+          
+          {/* Admin Route */}
+          <Route 
+            path="/admin" 
+            element={
+              user.isAdmin && !user.tempDisableAdmin ? (
+                <AdminDashboard />
+              ) : (
+                <Navigate to="/home" replace />
+              )
+            } 
+          />
+          
+          {/* Redirect unknown routes to home when authenticated */}
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </>
       ) : (
-        <HomePage 
-          user={user}
-          drops={drops}
-          onSignOut={handleLogout}
-        />
+        // Redirect to auth if trying to access protected routes
+        <Route path="*" element={<Navigate to="/auth" replace />} />
       )}
-    </Box>
+    </Routes>
   );
 }
 

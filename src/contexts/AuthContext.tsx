@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { 
+  signInWithRedirect,  
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  User, 
+  signOut,
+  getRedirectResult 
+} from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
@@ -87,34 +94,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const { user: firebaseUser } = result;
-
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      const userDoc = await getDoc(userRef);
-
-      let userProfile: UserProfile;
-      if (!userDoc.exists()) {
-        // Create a new user profile with minimal information
-        userProfile = defaultUserProfile(firebaseUser);
-        await setDoc(userRef, userProfile);
-        setUser(userProfile);
-      } else {
-        // Existing user, but might need profile completion
-        userProfile = userDoc.data() as UserProfile;
-        
-        // Ensure profile is not considered complete if key fields are missing
-        if (!userProfile.displayName || userProfile.interests.length === 0) {
-          userProfile.profileComplete = false;
-        }
-        
-        setUser(userProfile);
-      }
+      await signInWithRedirect(auth, provider);
     } catch (err) {
       console.error('Error logging in:', err);
       setError(err instanceof Error ? err : new Error('Login error'));
     }
   };
+
+  useEffect(() => {
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        const { user: firebaseUser } = result;
+
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = getDoc(userRef).then((userDoc) => {
+          let userProfile: UserProfile;
+          if (!userDoc.exists()) {
+            // Create a new user profile with minimal information
+            userProfile = defaultUserProfile(firebaseUser);
+            setDoc(userRef, userProfile);
+            setUser(userProfile);
+          } else {
+            // Existing user, but might need profile completion
+            userProfile = userDoc.data() as UserProfile;
+            
+            // Ensure profile is not considered complete if key fields are missing
+            if (!userProfile.displayName || userProfile.interests.length === 0) {
+              userProfile.profileComplete = false;
+            }
+            
+            setUser(userProfile);
+          }
+        });
+      }
+    });
+  }, []);
 
   const logout = async () => {
     try {
