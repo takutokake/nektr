@@ -46,11 +46,51 @@ npm run dev
 ```
 
 ## Contributing
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+
+### Branch Structure
+- `main`: Production-ready code
+- `develop`: Integration branch for new features
+- Feature branches:
+  - `feature/user-profiles`: User profile creation and management
+  - `feature/match-system`: Match-making functionality
+  - `feature/landing-page`: Landing page and UI updates
+  - `feature/calendar-integration`: Calendar invite system
+  - `feature/notifications`: User notification system
+
+### Development Workflow
+1. Create a new feature branch from `develop`:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git checkout -b feature/your-feature-name
+   ```
+
+2. Make your changes and commit them:
+   ```bash
+   git add .
+   git commit -m 'Description of your changes'
+   ```
+
+3. Push your changes and create a pull request:
+   ```bash
+   git push origin feature/your-feature-name
+   ```
+
+4. Create a pull request on GitHub targeting the `develop` branch
+
+### Active Development Areas
+- User Profile System: Profile creation and management
+- Match System: Core matching functionality and algorithms
+- Calendar Integration: Meeting scheduling and calendar invites
+- Notification System: Real-time user notifications
+- Landing Page: UI/UX improvements
+
+### Code Style
+- Use TypeScript for type safety
+- Follow React best practices and hooks
+- Implement proper error handling
+- Add comments for complex logic
+- Write unit tests for new features
 
 ## License
 Distributed under the MIT License.
