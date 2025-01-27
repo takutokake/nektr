@@ -48,7 +48,7 @@ const LandingPage = () => {
     {
       icon: FaUserFriends,
       title: 'Smart Matching',
-      description: 'Find like-minded students effortlessly.'
+      description: 'Find like-minded people effortlessly.'
     }
   ];
 
@@ -60,7 +60,7 @@ const LandingPage = () => {
     },
     {
       title: 'Get Matched',
-      description: 'Our smart algorithm pairs you with compatible students.',
+      description: 'Our smart algorithm pairs you with compatible people.',
       icon: FaUniversity
     },
     {
@@ -91,7 +91,7 @@ const LandingPage = () => {
   const faqs = [
     {
       question: 'Is Nektr free to use?',
-      answer: 'Yes! Signing up and matching with students is completely free.'
+      answer: 'Yes! Signing up and matching with people is completely free.'
     },
     {
       question: 'How does the matching algorithm work?',
@@ -205,9 +205,9 @@ const LandingPage = () => {
                   initial={{ opacity: 0, y: 20 }} 
                   animate={{ opacity: 1, y: 0 }} 
                   transition={{ duration: 0.5 }}
-                >
+                > 
                   <Heading as="h1" size="3xl" fontWeight="bold" lineHeight="1.2">
-                    Meet. <Text as="span" color="#FEF8EB">Eat.</Text> Connect.
+                    Eat. <Text as="span" color="#FEF8EB">Meet.</Text> Connect.
                   </Heading>
                   <Text fontSize="xl" mb={8}>
                     Discover your next favorite meal and make new friends along the way!
@@ -257,7 +257,7 @@ const LandingPage = () => {
                   What is Nektr?
                 </Heading>
                 <Text fontSize="lg" color={textColor}>
-                  Nektr is a social dining platform that connects college students over shared meals, helping them build meaningful relationships in a fun and engaging way.
+                  Nektr is a social dining platform that connects people over shared meals, helping them build meaningful relationships in a fun and engaging way.
                 </Text>
               </VStack>
 

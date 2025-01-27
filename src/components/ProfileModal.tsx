@@ -28,6 +28,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { updateUserProfile } from '../services/userService';
 import { UserProfile } from '../types';
+import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 
 interface LocationOption {
   value: string;
@@ -89,6 +90,14 @@ const ProfileModal: React.FC<{
     photoURL: initialData?.photoURL || user?.photoURL || ''
   });
 
+  const [phoneNumber, setPhoneNumber] = useState<string>(
+    (initialData as any)?.phoneNumber || ''
+  );
+  const [phoneError, setPhoneError] = useState<string>('');
+  const [smsConsent, setSmsConsent] = useState(
+    (initialData as any)?.smsNotificationsEnabled || false
+  );
+
   useEffect(() => {
     if (initialData) {
       setProfileData({
@@ -140,13 +149,50 @@ const ProfileModal: React.FC<{
     });
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawNumber = e.target.value;
+    setPhoneNumber(rawNumber);
+
+    try {
+      const parsedNumber = parsePhoneNumber(rawNumber, 'US');
+      if (parsedNumber && isValidPhoneNumber(rawNumber)) {
+        setPhoneError('');
+      } else {
+        setPhoneError('Invalid phone number');
+      }
+    } catch {
+      setPhoneError('Invalid phone number format');
+    }
+  };
+
   const handleSaveProfile = async () => {
     try {
       if (!user) {
         throw new Error('No user found');
       }
 
-      await updateUserProfile(user.uid, profileData);
+      if (phoneNumber && phoneError) {
+        toast({
+          title: 'Invalid Phone Number',
+          description: phoneError,
+          status: 'error',
+          duration: 3000,
+          isClosable: true
+        });
+        return;
+      }
+
+      const parsedNumber = phoneNumber ? parsePhoneNumber(phoneNumber, 'US') : null;
+      const formattedNumber = parsedNumber ? parsedNumber.format('E.164') : undefined;
+
+      const updates: Partial<UserProfile> = {
+        ...profileData,
+        ...(formattedNumber && { phoneNumber: formattedNumber }),
+        ...(formattedNumber && { phoneNumberVerified: true }),
+        ...(smsConsent !== undefined && { smsNotificationsEnabled: smsConsent })
+      };
+
+      await updateUserProfile(user.uid, updates);
 
       toast({
         title: 'Profile Updated',
@@ -309,6 +355,28 @@ const ProfileModal: React.FC<{
                 ))}
               </Wrap>
             </FormControl>
+
+            <FormControl>
+              <FormLabel>Phone Number (Optional)</FormLabel>
+              <Input 
+                type="tel" 
+                placeholder="+1 (555) 123-4567"
+                value={phoneNumber}
+                onChange={handlePhoneChange}
+              />
+              {phoneError && (
+                <Text color="red.500" fontSize="sm">
+                  {phoneError}
+                </Text>
+              )}
+            </FormControl>
+
+            <Checkbox 
+              isChecked={smsConsent}
+              onChange={(e) => setSmsConsent(e.target.checked)}
+            >
+              I consent to receive SMS notifications
+            </Checkbox>
           </VStack>
         </ModalBody>
 

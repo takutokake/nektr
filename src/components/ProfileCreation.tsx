@@ -1,31 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Box, 
   Button, 
+  Checkbox, 
   Container, 
   Flex, 
   FormControl, 
   FormLabel, 
   Heading, 
+  IconButton, 
   Input, 
-  Select,
-  VStack,
-  HStack,
+  Select, 
+  Tag, 
+  TagCloseButton, 
+  TagLabel, 
+  Text, 
+  useToast, 
+  VStack, 
   Wrap,
-  WrapItem,
-  Tag,
-  TagLabel,
-  TagCloseButton,
-  useToast,
-  IconButton,
-  ChakraProvider
+  ChakraProvider,
+  HStack,
+  WrapItem
 } from '@chakra-ui/react';
 import { ArrowBackIcon } from '@chakra-ui/icons';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useNavigate } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
+import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
 
 const INTERESTS = [
   'Technology', 'Arts', 'Sports', 'Music', 'Travel', 
@@ -70,7 +73,11 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   const [interests, setInterests] = useState<string[]>([]);
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>([]);
   const [meetingPreference, setMeetingPreference] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [smsConsent, setSmsConsent] = useState(false);
   const toast = useToast();
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     try {
@@ -96,11 +103,42 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     );
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawNumber = e.target.value;
+    setPhoneNumber(rawNumber);
+
+    try {
+      const parsedNumber = parsePhoneNumber(rawNumber, 'US');
+      if (parsedNumber && isValidPhoneNumber(rawNumber)) {
+        setPhoneError('');
+      } else {
+        setPhoneError('Invalid phone number');
+      }
+    } catch {
+      setPhoneError('Invalid phone number format');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Form Submission Triggered');
+    console.log('Current Form State:', {
+      displayName,
+      location,
+      priceRange,
+      meetingPreference,
+      interests,
+      cuisinePreferences
+    });
 
-    // Basic validation
     if (!displayName || !location || !priceRange || !meetingPreference) {
+      console.error('Form Validation Failed', {
+        displayName: !!displayName,
+        location: !!location,
+        priceRange: !!priceRange,
+        meetingPreference: !!meetingPreference
+      });
+      
       toast({
         title: 'Incomplete Profile',
         description: 'Please fill out all required fields',
@@ -112,7 +150,6 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     }
 
     try {
-      // Prepare user profile data
       const profileData = {
         uid: (user as User).uid || (user as UserProfile).uid,
         email: (user as User).email || (user as UserProfile).email || '',
@@ -141,10 +178,14 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         completedChallenges: [],
         badges: [],
         matches: [],
-        id: (user as User).uid || (user as UserProfile).uid
+        id: (user as User).uid || (user as UserProfile).uid,
+        phoneNumber: phoneNumber ? parsePhoneNumber(phoneNumber, 'US').format('E.164') : undefined,
+        phoneNumberVerified: !!phoneNumber,
+        smsNotificationsEnabled: smsConsent
       };
 
-      // Save profile to Firestore
+      console.log('Attempting to save profile:', profileData);
+
       await setDoc(doc(db, 'users', (user as User).uid || (user as UserProfile).uid), profileData);
 
       toast({
@@ -168,6 +209,14 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
       });
     }
   };
+
+  useEffect(() => {
+    console.log('ProfileCreation Component Rendered');
+    console.log('Display Name:', displayName);
+    console.log('Location:', location);
+    console.log('Price Range:', priceRange);
+    console.log('Meeting Preference:', meetingPreference);
+  }, [displayName, location, priceRange, meetingPreference]);
 
   return (
     <ChakraProvider>
@@ -317,11 +366,44 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                   </Wrap>
                 </FormControl>
 
+                <FormControl>
+                  <FormLabel>Phone Number (Optional)</FormLabel>
+                  <Input 
+                    type="tel" 
+                    placeholder="+1 (555) 123-4567"
+                    value={phoneNumber}
+                    onChange={handlePhoneChange}
+                  />
+                  {phoneError && (
+                    <Text color="red.500" fontSize="sm">
+                      {phoneError}
+                    </Text>
+                  )}
+                </FormControl>
+
+                <Checkbox 
+                  isChecked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                >
+                  I consent to receive SMS notifications
+                </Checkbox>
+
                 <Button 
                   colorScheme="brand" 
+                  onClick={() => navigate('/profile')}
                   type="submit" 
                   width="full" 
                   mt={4}
+                  bg="blue.500"
+                  color="white"
+                  _hover={{
+                    bg: "brand.600"
+                  }}
+                  _active={{
+                    bg: "brand.700"
+                  }}
+                  boxShadow="md"
+                  transition="all 0.2s"
                 >
                   Create Profile
                 </Button>

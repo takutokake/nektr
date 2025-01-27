@@ -14,6 +14,8 @@ import {
 import { db } from '../firebase';
 import { DropMatches, Match, UserProfile, MatchResponse, MatchOutcome, SuccessfulMatch } from '../types';
 import { Notification, MatchDetails } from '../types/notifications';
+import { twilioService } from './twilioService';
+import { getUserProfile } from './userService';
 
 const query = firestoreQuery;
 
@@ -588,6 +590,29 @@ export class MatchRegistrationService {
             match, 
             bothAccepted ? 'successful' : 'unsuccessful'
           );
+
+          if (bothAccepted) {
+            // Send Twilio SMS
+            const user1 = await getUserProfile(userId);
+            const user2 = await getUserProfile(otherParticipantId);
+
+            // Ensure both users exist and have phone numbers
+            if (user1 && user2 && 
+                (user1 as UserProfile & { phoneNumber?: string }).phoneNumber && 
+                (user2 as UserProfile & { phoneNumber?: string }).phoneNumber) {
+              await twilioService.sendMatchSuccessSMS(
+                user1 as UserProfile & { phoneNumber?: string }, 
+                user2 as UserProfile & { phoneNumber?: string }
+              );
+            } else {
+              console.warn('Cannot send SMS: Missing user profiles or phone numbers', {
+                user1: !!user1,
+                user2: !!user2,
+                user1PhoneNumber: user1 ? !!(user1 as UserProfile & { phoneNumber?: string }).phoneNumber : false,
+                user2PhoneNumber: user2 ? !!(user2 as UserProfile & { phoneNumber?: string }).phoneNumber : false
+              });
+            }
+          }
         } else {
           console.log('11. Waiting for other participant to respond', {
             currentResponses: participantResponses.length,

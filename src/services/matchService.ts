@@ -7,11 +7,13 @@ import {
   doc, 
   Timestamp,
   getDoc,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Drop, Match, DropParticipants, UserProfile } from '../types';
 import { sendNotification } from './notificationService';
+import { twilioService } from './twilioService';
 
 export class MatchService {
   private static instance: MatchService;
@@ -112,6 +114,18 @@ export class MatchService {
                   matchId: matchRef.id
                 }
               });
+
+              // Send SMS to matched users
+              const userProfile = matchedUserProfiles[userId];
+              const matchedUserProfile = matchedUserProfiles[matchedUserId];
+              const phoneNumberVerified = (userProfile as any).phoneNumberVerified;
+              const smsNotificationsEnabled = (userProfile as any).smsNotificationsEnabled;
+              if (phoneNumberVerified && smsNotificationsEnabled) {
+                await twilioService.sendMatchSMS(userProfile, {
+                  dropTitle: drop.title,
+                  matchedUserName: matchedUserProfile.displayName
+                });
+              }
             })
           );
 
@@ -157,6 +171,59 @@ export class MatchService {
       await Promise.all(matchPromises);
     } catch (error) {
       console.error('Error checking and generating drop matches:', error);
+    }
+  }
+
+  /**
+   * Handle match acceptance and send SMS to matched users
+   * @param matchId ID of the match
+   * @param userId User accepting the match
+   */
+  public async acceptMatch(matchId: string, userId: string): Promise<void> {
+    try {
+      const matchRef = doc(db, 'matches', matchId);
+      const matchSnap = await getDoc(matchRef);
+
+      if (matchSnap.exists()) {
+        const matchData = matchSnap.data() as Match;
+        const matchedUserId = matchData.matchPairs[userId];
+
+        // Update match responses
+        const updatedResponses = {
+          ...matchData.responses,
+          [userId]: 'accepted'
+        };
+
+        // Check if both users have accepted
+        const allAccepted = Object.entries(matchData.matchPairs).every(
+          ([user, matchedUser]) => 
+            updatedResponses[user] === 'accepted' && 
+            updatedResponses[matchedUser] === 'accepted'
+        );
+
+        // Update match document
+        await updateDoc(matchRef, { 
+          responses: updatedResponses,
+          status: allAccepted ? 'confirmed' : 'pending'
+        });
+
+        // If both users accepted, send SMS
+        if (allAccepted) {
+          const userProfiles = matchData.participants;
+          const user1 = userProfiles[userId];
+          const user2 = userProfiles[matchedUserId];
+
+          // Send SMS to both matched users
+          await twilioService.sendMatchSMSToMultipleUsers([user1, user2], {
+            dropTitle: matchData.meetingDetails?.location || 'Upcoming Drop',
+            matchedUserName: userId === Object.keys(matchData.matchPairs)[0] 
+              ? user2.displayName 
+              : user1.displayName
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error accepting match:', error);
     }
   }
 }

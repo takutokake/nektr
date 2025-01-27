@@ -17,6 +17,12 @@ export interface UserProfile {
   matches: Match[];
   createdAt: Date;
   lastActive: Date;
+  phoneNumber: string;
+  phoneNumberVerified: boolean;
+  smsNotificationsEnabled: boolean;
+  location?: string;
+  priceRange?: string;
+  id?: string;
 }
 
 export interface Badge {

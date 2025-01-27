@@ -18,7 +18,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
-    }
+    },
+    "types": ["libphonenumber-js", "node"]
   },
   "include": ["src"],
   "references": [{ "path": "./tsconfig.node.json" }]
