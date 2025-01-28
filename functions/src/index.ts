@@ -1,14 +1,19 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as twilio from 'twilio';
+import twilio from 'twilio';
 
 // Initialize Firebase Admin SDK
 admin.initializeApp();
 
-// Twilio configuration (replace with your actual credentials)
-const twilioAccountSid = functions.config().twilio.account_sid;
-const twilioAuthToken = functions.config().twilio.auth_token;
-const twilioPhoneNumber = functions.config().twilio.phone_number;
+// Twilio configuration from environment variables
+const twilioAccountSid = process.env.TWILIO_ACCOUNT_SID;
+const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
+const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+
+// Validate Twilio configuration
+if (!twilioAccountSid || !twilioAuthToken || !twilioPhoneNumber) {
+  console.error('Missing Twilio configuration. Please check your environment variables.');
+}
 
 // Initialize Twilio client
 const twilioClient = twilio(twilioAccountSid, twilioAuthToken);

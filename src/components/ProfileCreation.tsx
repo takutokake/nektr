@@ -3,26 +3,30 @@ import {
   Box, 
   Button, 
   Checkbox, 
-  Container, 
+  Collapse,
+  Container,
   Flex, 
   FormControl, 
   FormLabel, 
   Heading, 
   IconButton, 
   Input, 
+  InputGroup, 
+  InputLeftAddon, 
   Select, 
   Tag, 
   TagCloseButton, 
   TagLabel, 
   Text, 
-  useToast, 
+  useToast,
   VStack, 
   Wrap,
   ChakraProvider,
   HStack,
-  WrapItem
+  WrapItem,
+  FormHelperText
 } from '@chakra-ui/react';
-import { ArrowBackIcon } from '@chakra-ui/icons';
+import { ArrowBackIcon, ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
@@ -78,6 +82,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   const [smsConsent, setSmsConsent] = useState(false);
   const toast = useToast();
   const navigate = useNavigate();
+  const [openSection, setOpenSection] = useState<string | null>(null);
 
   const handleSignOut = async () => {
     try {
@@ -121,30 +126,109 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form Submission Triggered');
-    console.log('Current Form State:', {
-      displayName,
-      location,
-      priceRange,
-      meetingPreference,
-      interests,
-      cuisinePreferences
-    });
 
-    if (!displayName || !location || !priceRange || !meetingPreference) {
-      console.error('Form Validation Failed', {
-        displayName: !!displayName,
-        location: !!location,
-        priceRange: !!priceRange,
-        meetingPreference: !!meetingPreference
-      });
-      
+    // Validate all basic information fields
+    if (!displayName || displayName.trim() === '') {
       toast({
-        title: 'Incomplete Profile',
-        description: 'Please fill out all required fields',
+        title: 'Missing Information',
+        description: 'Please enter your display name',
         status: 'error',
         duration: 3000,
-        isClosable: true
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!location) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select your location',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!priceRange) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select your price range',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    if (!meetingPreference) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select your meeting preference',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Validate interests
+    if (!interests || interests.length === 0) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select at least one interest',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Validate cuisine preferences
+    if (!cuisinePreferences || cuisinePreferences.length === 0) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select at least one cuisine preference',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Validate phone number
+    if (!phoneNumber || phoneNumber.trim() === '') {
+      toast({
+        title: 'Missing Information',
+        description: 'Phone number is required',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^\+1\s?\(\d{3}\)\s?\d{3}[-.]?\d{4}$/;
+    if (!phoneRegex.test(phoneNumber)) {
+      toast({
+        title: 'Invalid Phone Number',
+        description: 'Please enter a valid US phone number in the format +1 (555) 123-4567',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    // Validate SMS consent
+    if (!smsConsent) {
+      toast({
+        title: 'SMS Consent Required',
+        description: 'You must consent to receive SMS notifications to join',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
       });
       return;
     }
@@ -210,6 +294,35 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     }
   };
 
+  const toggleSection = (sectionName: string) => {
+    setOpenSection(prev => prev === sectionName ? null : sectionName);
+  };
+
+  const CollapsibleSection = ({ 
+    title, 
+    children, 
+    sectionName 
+  }: { 
+    title: string, 
+    children: React.ReactNode, 
+    sectionName: string 
+  }) => (
+    <Box>
+      <Button 
+        onClick={() => toggleSection(sectionName)} 
+        variant="ghost" 
+        width="full" 
+        justifyContent="space-between"
+        rightIcon={openSection === sectionName ? <ChevronUpIcon /> : <ChevronDownIcon />}
+      >
+        {title}
+      </Button>
+      <Collapse in={openSection === sectionName}>
+        {children}
+      </Collapse>
+    </Box>
+  );
+
   useEffect(() => {
     console.log('ProfileCreation Component Rendered');
     console.log('Display Name:', displayName);
@@ -246,151 +359,173 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
             width="100%"
           >
             <form onSubmit={handleSubmit}>
-              <VStack spacing={4}>
-                <Heading 
-                  textAlign="center" 
-                  color="brand.500" 
-                  mb={4}
-                >
-                  Create Your Profile
-                </Heading>
+              <VStack spacing={4} align="stretch" p={4}>
+                <CollapsibleSection title="Basic Information" sectionName="basic">
+                  <FormControl isRequired>
+                    <FormLabel>Display Name</FormLabel>
+                    <Input 
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                      placeholder="Your name"
+                    />
+                  </FormControl>
+                  
+                  <FormControl mt={4} isRequired>
+                    <FormLabel>Location</FormLabel>
+                    <Select 
+                      value={location}
+                      onChange={(e) => setLocation(e.target.value)}
+                      placeholder="Select location"
+                    >
+                      {LOCATIONS.map(loc => (
+                        <option key={loc.value} value={loc.value}>{loc.label}</option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </CollapsibleSection>
 
-                <FormControl isRequired>
-                  <FormLabel fontWeight="bold" fontSize="lg">Display Name</FormLabel>
-                  <Input 
-                    type="text" 
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Enter your display name"
-                  />
-                </FormControl>
+                <CollapsibleSection title="Preferences" sectionName="preferences">
+                  <FormControl isRequired>
+                    <FormLabel>Price Range</FormLabel>
+                    <Select 
+                      value={priceRange}
+                      onChange={(e) => setPriceRange(e.target.value)}
+                      placeholder="Select price range"
+                    >
+                      {PRICE_RANGES.map(range => (
+                        <option key={range} value={range}>{range}</option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  
+                  <FormControl mt={4} isRequired>
+                    <FormLabel>Meeting Preference</FormLabel>
+                    <Select 
+                      value={meetingPreference}
+                      onChange={(e) => setMeetingPreference(e.target.value)}
+                      placeholder="Select meeting preference"
+                    >
+                      {MEETING_PREFERENCES.map(pref => (
+                        <option key={pref.value} value={pref.value}>{pref.label}</option>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </CollapsibleSection>
 
-                <FormControl isRequired>
-                  <FormLabel fontWeight="bold" fontSize="lg">Location</FormLabel>
-                  <Select 
-                    placeholder="Select your area"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                  >
-                    {LOCATIONS.map(loc => (
-                      <option key={loc.value} value={loc.value}>
-                        {loc.label}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
+                <CollapsibleSection title="Interests" sectionName="interests">
+                  <FormControl isRequired>
+                    <FormLabel>Select Your Interests</FormLabel>
+                    <Wrap spacing={2}>
+                      {INTERESTS.map(interest => (
+                        <WrapItem key={interest}>
+                          <Tag
+                            size="lg"
+                            bg={interests.includes(interest) ? '#FDAA25' : '#FFF5E6'}
+                            color={interests.includes(interest) ? 'white' : '#FDAA25'}
+                            borderColor={interests.includes(interest) ? '#FDAA25' : 'transparent'}
+                            borderWidth="1px"
+                            onClick={() => handleInterestToggle(interest)}
+                            cursor="pointer"
+                            fontFamily="Poppins"
+                            fontWeight={600}
+                          >
+                            <TagLabel>{interest}</TagLabel>
+                            {interests.includes(interest) && (
+                              <TagCloseButton onClick={(e) => {
+                                e.stopPropagation();
+                                handleInterestToggle(interest);
+                              }} />
+                            )}
+                          </Tag>
+                        </WrapItem>
+                      ))}
+                    </Wrap>
+                    {(!interests || interests.length === 0) && (
+                      <FormHelperText color="red.500">
+                        Please select at least one interest
+                      </FormHelperText>
+                    )}
+                  </FormControl>
+                </CollapsibleSection>
 
-                <FormControl isRequired>
-                  <FormLabel fontWeight="bold" fontSize="lg">Price Range</FormLabel>
-                  <Select 
-                    placeholder="Select price range"
-                    value={priceRange}
-                    onChange={(e) => setPriceRange(e.target.value)}
-                  >
-                    {PRICE_RANGES.map(range => (
-                      <option key={range} value={range}>{range}</option>
-                    ))}
-                  </Select>
-                </FormControl>
+                <CollapsibleSection title="Cuisine Preferences" sectionName="cuisines">
+                  <FormControl isRequired>
+                    <FormLabel>Select Your Cuisine Preferences</FormLabel>
+                    <Wrap spacing={2}>
+                      {CUISINES.map(cuisine => (
+                        <WrapItem key={cuisine}>
+                          <Tag
+                            size="lg"
+                            bg={cuisinePreferences.includes(cuisine) ? '#FDAA25' : '#FFF5E6'}
+                            color={cuisinePreferences.includes(cuisine) ? 'white' : '#FDAA25'}
+                            borderColor={cuisinePreferences.includes(cuisine) ? '#FDAA25' : 'transparent'}
+                            borderWidth="1px"
+                            onClick={() => handleCuisineToggle(cuisine)}
+                            cursor="pointer"
+                            fontFamily="Poppins"
+                            fontWeight={600}
+                          >
+                            <TagLabel>{cuisine}</TagLabel>
+                            {cuisinePreferences.includes(cuisine) && (
+                              <TagCloseButton onClick={(e) => {
+                                e.stopPropagation();
+                                handleCuisineToggle(cuisine);
+                              }} />
+                            )}
+                          </Tag>
+                        </WrapItem>
+                      ))}
+                    </Wrap>
+                    {(!cuisinePreferences || cuisinePreferences.length === 0) && (
+                      <FormHelperText color="red.500">
+                        Please select at least one cuisine preference
+                      </FormHelperText>
+                    )}
+                  </FormControl>
+                </CollapsibleSection>
 
-                <FormControl isRequired>
-                  <FormLabel fontWeight="bold" fontSize="lg">Meeting Preference</FormLabel>
-                  <Select 
-                    placeholder="Select your preferred meeting style"
-                    value={meetingPreference}
-                    onChange={(e) => setMeetingPreference(e.target.value)}
-                  >
-                    {MEETING_PREFERENCES.map(pref => (
-                      <option key={pref.value} value={pref.value}>
-                        {pref.label}
-                      </option>
-                    ))}
-                  </Select>
-                </FormControl>
+                <CollapsibleSection title="Contact Information" sectionName="contact">
+                  <FormControl isRequired>
+                    <FormLabel>Phone Number</FormLabel>
+                    <InputGroup>
+                      <InputLeftAddon children='+1' />
+                      <Input 
+                        type="tel" 
+                        placeholder="(555) 123-4567"
+                        value={phoneNumber}
+                        onChange={handlePhoneChange}
+                        variant="filled"
+                        isRequired
+                      />
+                    </InputGroup>
+                    {phoneError && (
+                      <Text color="red.500" fontSize="sm" mt={2}>
+                        {phoneError}
+                      </Text>
+                    )}
+                    <FormHelperText>
+                      We need your phone number to send match notifications
+                    </FormHelperText>
+                  </FormControl>
 
-                <FormControl>
-                  <FormLabel fontWeight="bold" fontSize="lg">Interests</FormLabel>
-                  <Wrap spacing={2}>
-                    {INTERESTS.map(interest => (
-                      <WrapItem key={interest}>
-                        <Tag
-                          size="lg"
-                          bg={interests.includes(interest) ? '#FDAA25' : '#FFF5E6'}
-                          color={interests.includes(interest) ? 'white' : '#FDAA25'}
-                          borderColor={interests.includes(interest) ? '#FDAA25' : 'transparent'}
-                          borderWidth="1px"
-                          onClick={() => handleInterestToggle(interest)}
-                          cursor="pointer"
-                          fontFamily="Poppins"
-                          fontWeight={600}
-                        >
-                          <TagLabel>{interest}</TagLabel>
-                          {interests.includes(interest) && (
-                            <TagCloseButton onClick={(e) => {
-                              e.stopPropagation();
-                              handleInterestToggle(interest);
-                            }} />
-                          )}
-                        </Tag>
-                      </WrapItem>
-                    ))}
-                  </Wrap>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel fontWeight="bold" fontSize="lg">Cuisine Preferences</FormLabel>
-                  <Wrap spacing={2}>
-                    {CUISINES.map(cuisine => (
-                      <WrapItem key={cuisine}>
-                        <Tag
-                          size="lg"
-                          bg={cuisinePreferences.includes(cuisine) ? '#FDAA25' : '#FFF5E6'}
-                          color={cuisinePreferences.includes(cuisine) ? 'white' : '#FDAA25'}
-                          borderColor={cuisinePreferences.includes(cuisine) ? '#FDAA25' : 'transparent'}
-                          borderWidth="1px"
-                          onClick={() => handleCuisineToggle(cuisine)}
-                          cursor="pointer"
-                          fontFamily="Poppins"
-                          fontWeight={600}
-                        >
-                          <TagLabel>{cuisine}</TagLabel>
-                          {cuisinePreferences.includes(cuisine) && (
-                            <TagCloseButton onClick={(e) => {
-                              e.stopPropagation();
-                              handleCuisineToggle(cuisine);
-                            }} />
-                          )}
-                        </Tag>
-                      </WrapItem>
-                    ))}
-                  </Wrap>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Phone Number (Optional)</FormLabel>
-                  <Input 
-                    type="tel" 
-                    placeholder="+1 (555) 123-4567"
-                    value={phoneNumber}
-                    onChange={handlePhoneChange}
-                  />
-                  {phoneError && (
-                    <Text color="red.500" fontSize="sm">
-                      {phoneError}
-                    </Text>
-                  )}
-                </FormControl>
-
-                <Checkbox 
-                  isChecked={smsConsent}
-                  onChange={(e) => setSmsConsent(e.target.checked)}
-                >
-                  I consent to receive SMS notifications
-                </Checkbox>
+                  <FormControl isRequired mt={4}>
+                    <Checkbox 
+                      isChecked={smsConsent}
+                      onChange={(e) => setSmsConsent(e.target.checked)}
+                      colorScheme="green"
+                      size="lg"
+                    >
+                      I consent to receive SMS notifications about potential matches
+                    </Checkbox>
+                    <FormHelperText color="gray.500">
+                      By checking this, you agree to receive text messages about your matches
+                    </FormHelperText>
+                  </FormControl>
+                </CollapsibleSection>
 
                 <Button 
                   colorScheme="brand" 
-                  onClick={() => navigate('/profile')}
+                  onClick={handleSubmit}
                   type="submit" 
                   width="full" 
                   mt={4}
@@ -399,13 +534,8 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                   _hover={{
                     bg: "brand.600"
                   }}
-                  _active={{
-                    bg: "brand.700"
-                  }}
-                  boxShadow="md"
-                  transition="all 0.2s"
                 >
-                  Create Profile
+                  Complete Profile
                 </Button>
               </VStack>
             </form>

@@ -7,10 +7,24 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
+# Node and dependency directories
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist/
 dist-ssr
-*.local
+build/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.env*
 
 # Editor directories and files
 .vscode/*
@@ -22,8 +36,32 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
 # Sensitive credential files
 *serviceAccountKey.json
-*.env
-.env*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Ignore duplicate and temporary files
+**/index 2.*
+**/index 3.*
+**/index 4.*
+**/*.bak
+**/*.tmp
+**/package 2.*
+**/tsconfig 2.*
+*.bak
+*.tmp
+*.local

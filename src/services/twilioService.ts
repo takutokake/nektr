@@ -14,6 +14,7 @@ export interface TwilioMessagePayload {
 export class TwilioService {
   private static instance: TwilioService;
   private messagesCollection = collection(db, 'messages');
+  smsNotificationsEnabled: boolean = true;
 
   public static getInstance(): TwilioService {
     if (!TwilioService.instance) {
@@ -166,7 +167,53 @@ export class TwilioService {
     // Return first unique cuisine or fallback
     return uniqueCuisines.length > 0 
       ? uniqueCuisines[0] 
-      : 'Indian';  // Default recommendation
+      : 'none';  // Default recommendation
+  }
+
+  private formatPhoneNumber(phone: string) {
+    return phone.startsWith('+') ? phone : `+1${phone.replace(/\D/g, '')}`;
+  }
+
+  private calculateSharedInterests(user1: UserProfile, user2: UserProfile) {
+    console.log('User 1 Interests:', user1.interests);
+    console.log('User 2 Interests:', user2.interests);
+    
+    // Combine all interests from both users
+    const allInterests = [
+      ...(user1.interests || []),
+      ...(user2.interests || [])
+    ];
+    
+    // If no interests, return a default set
+    if (allInterests.length === 0) {
+      return ['Arts', 'Sports', 'Technology'];
+    }
+    
+    // If one user has more interests, return those
+    return allInterests.length > 3 
+      ? allInterests.slice(0, 3) 
+      : allInterests;
+  }
+
+  private calculateSharedCuisines(user1: UserProfile, user2: UserProfile) {
+    console.log('User 1 Cuisine Preferences:', user1.cuisinePreferences);
+    console.log('User 2 Cuisine Preferences:', user2.cuisinePreferences);
+    
+    // Combine all cuisine preferences from both users
+    const allCuisines = [
+      ...(user1.cuisinePreferences || []),
+      ...(user2.cuisinePreferences || [])
+    ];
+    
+    // If no cuisine preferences, return a default set
+    if (allCuisines.length === 0) {
+      return ['Various', 'International'];
+    }
+    
+    // If one user has more cuisine preferences, return those
+    return allCuisines.length > 2 
+      ? allCuisines.slice(0, 2) 
+      : allCuisines;
   }
 
   /**
@@ -179,37 +226,26 @@ export class TwilioService {
     user2: UserProfile & { phoneNumber?: string }
   ): Promise<void> {
     try {
-      console.log('Sending match success SMS', {
-        user1Name: user1.displayName,
-        user2Name: user2.displayName
-      });
-
-      // Find shared interests and cuisine preferences
-      const sharedInterests = (user1.interests || []).filter(
-        interest => (user2.interests || []).includes(interest)
-      );
-      const sharedCuisines = (user1.cuisinePreferences || []).filter(
-        cuisine => (user2.cuisinePreferences || []).includes(cuisine)
-      );
-
-      // Find recommended cuisine
-      const recommendedCuisine = this.selectCuisinePreference(user1, user2);
-
-      // Validate phone numbers
+      // Validate phone numbers exist
       if (!user1.phoneNumber || !user2.phoneNumber) {
-        console.warn('Cannot send SMS: Missing phone number', {
-          user1Phone: !!user1.phoneNumber,
-          user2Phone: !!user2.phoneNumber
-        });
+        console.warn('Cannot send SMS: Missing phone number');
         return;
       }
 
-      // Ensure phone numbers are in international format
-      const formatPhoneNumber = (phone: string) => 
-        phone.startsWith('+') ? phone : `+1${phone.replace(/\D/g, '')}`;
+      // Check if SMS notifications are enabled
+      if (!this.smsNotificationsEnabled) {
+        console.warn('SMS notifications are disabled');
+        return;
+      }
 
-      const formattedPhone1 = formatPhoneNumber(user1.phoneNumber);
-      const formattedPhone2 = formatPhoneNumber(user2.phoneNumber);
+      // Format phone numbers
+      const formattedPhone1 = this.formatPhoneNumber(user1.phoneNumber);
+      const formattedPhone2 = this.formatPhoneNumber(user2.phoneNumber);
+
+      // Calculate shared interests and cuisines
+      const sharedInterests = this.calculateSharedInterests(user1, user2);
+      const sharedCuisines = this.calculateSharedCuisines(user1, user2);
+      const recommendedCuisine = this.selectCuisinePreference(user1, user2);
 
       // Prepare personalized SMS messages
       const smsPromises = [
@@ -219,7 +255,7 @@ export class TwilioService {
 You've been matched with ${user2.displayName || user2.email}
 Cuisine Preference: ${sharedCuisines.length > 0 ? sharedCuisines.join(', ') : 'Various'}
 Recommended: ${recommendedCuisine}
-Shared Interests: ${sharedInterests.length > 0 ? sharedInterests.join(', ') : 'Arts, Sports, Tea'}
+Shared Interests: ${sharedInterests.length > 0 ? sharedInterests.join(', ') : 'No specific shared interests'}
 Their Phone Number: ${formattedPhone2}
 
 Start a conversation and enjoy your meetup!`,
@@ -232,7 +268,7 @@ Start a conversation and enjoy your meetup!`,
 You've been matched with ${user1.displayName || user1.email}
 Cuisine Preference: ${sharedCuisines.length > 0 ? sharedCuisines.join(', ') : 'Various'}
 Recommended: ${recommendedCuisine}
-Shared Interests: ${sharedInterests.length > 0 ? sharedInterests.join(', ') : 'Arts, Sports, Tea'}
+Shared Interests: ${sharedInterests.length > 0 ? sharedInterests.join(', ') : 'No specific shared interests'}
 Their Phone Number: ${formattedPhone1}
 
 Start a conversation and enjoy your meetup!`,
