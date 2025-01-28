@@ -78,6 +78,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   const [cuisinePreferences, setCuisinePreferences] = useState<string[]>([]);
   const [meetingPreference, setMeetingPreference] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [rawPhoneNumber, setRawPhoneNumber] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [smsConsent, setSmsConsent] = useState(false);
   const toast = useToast();
@@ -109,18 +110,41 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawNumber = e.target.value;
-    setPhoneNumber(rawNumber);
-
-    try {
-      const parsedNumber = parsePhoneNumber(rawNumber, 'US');
-      if (parsedNumber && isValidPhoneNumber(rawNumber)) {
-        setPhoneError('');
-      } else {
-        setPhoneError('Invalid phone number');
+    // Remove all non-digit characters
+    const rawInput = e.target.value.replace(/\D/g, '');
+    
+    // Limit to 10 digits
+    const limitedInput = rawInput.slice(0, 10);
+    
+    // Set raw phone number
+    setRawPhoneNumber(limitedInput);
+    
+    // Format phone number
+    let formattedPhone = '';
+    if (limitedInput.length > 0) {
+      formattedPhone += '(';
+      formattedPhone += limitedInput.slice(0, 3);
+      if (limitedInput.length > 3) {
+        formattedPhone += ') ';
+        formattedPhone += limitedInput.slice(3, 6);
+        if (limitedInput.length > 6) {
+          formattedPhone += '-';
+          formattedPhone += limitedInput.slice(6);
+        }
       }
-    } catch {
-      setPhoneError('Invalid phone number format');
+    }
+    
+    // Set phone number and validate
+    setPhoneNumber(formattedPhone);
+    
+    // Validate phone number
+    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}$/;
+    if (formattedPhone.length === 14 && phoneRegex.test(formattedPhone)) {
+      setPhoneError('');
+    } else if (formattedPhone.length > 0) {
+      setPhoneError('Please enter a valid 10-digit phone number');
+    } else {
+      setPhoneError('Phone number is required');
     }
   };
 
@@ -197,7 +221,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     }
 
     // Validate phone number
-    if (!phoneNumber || phoneNumber.trim() === '') {
+    if (!rawPhoneNumber || rawPhoneNumber.trim() === '') {
       toast({
         title: 'Missing Information',
         description: 'Phone number is required',
@@ -209,7 +233,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
     }
 
     // Validate phone number format (basic validation)
-    const phoneRegex = /^\+1\s?\(\d{3}\)\s?\d{3}[-.]?\d{4}$/;
+    const phoneRegex = /^\(\d{3}\) \d{3}-\d{4}$/;
     if (!phoneRegex.test(phoneNumber)) {
       toast({
         title: 'Invalid Phone Number',
@@ -238,33 +262,17 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         uid: (user as User).uid || (user as UserProfile).uid,
         email: (user as User).email || (user as UserProfile).email || '',
         displayName,
-        name: displayName,
-        photoURL: (user as User).photoURL || (user as UserProfile).photoURL || '',
-        interests, 
-        cuisinePreferences, 
         location,
-        meetingPreference,
         priceRange,
-        cuisines: [],
-        bio: '',
-        avatar: '',
-        profilePicture: '',
-        isAdmin: false,
-        tempDisableAdmin: false,
-        registeredDrops: [],
-        profileComplete: true,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-        streak: 0,
-        totalMatches: 0,
-        progress: 0,
-        connections: 0,
-        completedChallenges: [],
+        meetingPreference,
+        interests,
+        cuisinePreferences,
+        socialLinks: [],
         badges: [],
         matches: [],
         id: (user as User).uid || (user as UserProfile).uid,
-        phoneNumber: phoneNumber ? parsePhoneNumber(phoneNumber, 'US').format('E.164') : undefined,
-        phoneNumberVerified: !!phoneNumber,
+        phoneNumber: rawPhoneNumber ? `+1${rawPhoneNumber}` : undefined,
+        phoneNumberVerified: !!rawPhoneNumber,
         smsNotificationsEnabled: smsConsent
       };
 
@@ -492,10 +500,21 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                       <Input 
                         type="tel" 
                         placeholder="(555) 123-4567"
-                        value={phoneNumber}
+                        value={rawPhoneNumber}
                         onChange={handlePhoneChange}
                         variant="filled"
                         isRequired
+                        autoFocus
+                        onKeyDown={(e) => {
+                          // Prevent non-numeric input
+                          if (!/^\d$/.test(e.key) && 
+                              e.key !== 'Backspace' && 
+                              e.key !== 'Delete' && 
+                              e.key !== 'ArrowLeft' && 
+                              e.key !== 'ArrowRight') {
+                            e.preventDefault();
+                          }
+                        }}
                       />
                     </InputGroup>
                     {phoneError && (
