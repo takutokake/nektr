@@ -373,9 +373,26 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                     <FormLabel>Display Name</FormLabel>
                     <Input 
                       value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
+                      onChange={(e) => {
+                        // Limit to 30 characters
+                        const value = e.target.value.slice(0, 30);
+                        // Allow only letters, spaces, and hyphens
+                        const sanitizedValue = value.replace(/[^a-zA-Z\s-]/g, '');
+                        setDisplayName(sanitizedValue);
+                      }}
                       placeholder="Your name"
+                      variant="filled"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        // Prevent numbers and special characters
+                        if (/[0-9!@#$%^&*()_+\=\[\]{};':"\\|,.<>\/?]/.test(e.key)) {
+                          e.preventDefault();
+                        }
+                      }}
                     />
+                    <FormHelperText>
+                      {displayName.length}/30 characters (letters, spaces, and hyphens only)
+                    </FormHelperText>
                   </FormControl>
                   
                   <FormControl mt={4} isRequired>
