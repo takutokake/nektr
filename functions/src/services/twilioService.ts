@@ -1,10 +1,10 @@
 import { 
   collection, 
   addDoc, 
-  Timestamp 
+  serverTimestamp 
 } from 'firebase/firestore';
-import { db } from '../firebase';
-import { UserProfile } from '../types';
+import { db } from '../../src/firebase';
+import { UserProfile } from '../../src/types';
 
 export interface TwilioMessagePayload {
   to: string;
@@ -84,7 +84,7 @@ export class TwilioService {
 
       const docRef = await addDoc(this.messagesCollection, {
         ...messagePayload,
-        createdAt: Timestamp.now(),
+        createdAt: serverTimestamp(),
         status: 'pending'
       });
 
@@ -264,7 +264,7 @@ You've been matched with ${user2.displayName} 🎉
 📞 Their Phone Number: ${formattedPhone2}
 
 💬 Send a message and start a conversation and enjoy your meetup! 🥳`,
-          createdAt: Timestamp.now()
+          createdAt: serverTimestamp()
         }),
         addDoc(this.messagesCollection, {
           to: formattedPhone2,
@@ -281,7 +281,7 @@ You've been matched with ${user1.displayName} 🎉
 📞 Their Phone Number: ${formattedPhone1}
 
 💬 Send a message and start a conversation and enjoy your meetup! 🥳`,
-          createdAt: Timestamp.now()
+          createdAt: serverTimestamp()
         })
       ];
 

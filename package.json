@@ -16,6 +16,7 @@
     "@chakra-ui/react": "^2.8.1",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
+    "@twilio/conversations": "^2.6.0",
     "@types/react-router-dom": "^5.3.3",
     "date-fns": "^2.30.0",
     "firebase": "^10.6.0",
@@ -45,7 +46,8 @@
     "tailwindcss": "^3.4.17",
     "twilio": "^5.4.2",
     "typescript": "^5.7.3",
-    "vite": "^4.5.5"
+    "vite": "^4.5.5",
+    "vite-plugin-node-polyfills": "^0.23.0"
   },
   "description": "## Overview Nectr is an innovative social matching platform designed to connect users based on shared interests, cuisine preferences, and social dynamics.",
   "main": "eslint.config.js",

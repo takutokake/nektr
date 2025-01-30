@@ -4,10 +4,11 @@
   "description": "Firebase Cloud Functions for Nectr",
   "main": "lib/index.js",
   "scripts": {
-    "build": "tsc",
+    "clean": "rm -rf lib",
+    "build": "npm run clean && tsc",
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
-    "start": "npm run shell",
+    "start": "npm run build && firebase emulators:start",
     "deploy": "firebase deploy --only functions",
     "logs": "firebase functions:log"
   },

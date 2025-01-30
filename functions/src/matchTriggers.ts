@@ -1,5 +1,5 @@
 import * as functions from 'firebase-functions';
-import { matchService } from '../../src/services/matchService';
+import { matchService } from './services/matchService';
 
 // Cloud function to check and generate matches every 5 minutes
 export const checkDropMatches = functions.pubsub

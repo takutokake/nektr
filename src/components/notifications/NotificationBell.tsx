@@ -42,18 +42,54 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const renderMatchNotification = (notification: Notification) => {
-    const { matchDetails } = notification;
+    const matchDetails = notification.matchDetails;
     if (!matchDetails) return null;
 
-    // Intelligently handle cuisine preference
-    const cuisinePreference = matchDetails.cuisineMatch?.preference === 'Various' 
-      ? matchDetails.cuisineMatch?.recommendation || 'Undecided'
-      : matchDetails.cuisineMatch?.preference;
+    // Safely get interests from match details
+    const user1Interests = [
+      ...(matchDetails.commonInterests || [])
+    ];
+    const user2Interests = [
+      ...(matchDetails.commonInterests || [])
+    ];
 
-    // Intelligently handle shared interests
-    const sharedInterests = matchDetails.commonInterests && Array.isArray(matchDetails.commonInterests) && matchDetails.commonInterests.length > 0
-      ? matchDetails.commonInterests.map(interest => interest && typeof interest === 'string' ? interest.charAt(0).toUpperCase() + interest.slice(1) : 'Unknown')
-      : ['No Specific Interests'];
+    // Find common interests
+    const commonInterests = user1Interests.filter(interest => 
+      user2Interests.includes(interest)
+    );
+
+    // Select interests
+    const selectedInterests = commonInterests.length > 0 
+      ? commonInterests.slice(0, 3)
+      : ['Arts', 'Sports', 'Technology'];
+
+    // Safely get cuisines from match details
+    const user1Cuisines = [
+      ...(matchDetails.cuisineMatch?.preference ? [matchDetails.cuisineMatch.preference] : []),
+      ...(matchDetails.cuisineMatch?.recommendation ? [matchDetails.cuisineMatch.recommendation] : [])
+    ];
+    const user2Cuisines = [
+      ...(matchDetails.cuisineMatch?.preference ? [matchDetails.cuisineMatch.preference] : []),
+      ...(matchDetails.cuisineMatch?.recommendation ? [matchDetails.cuisineMatch.recommendation] : [])
+    ];
+
+    // Find common cuisines
+    const commonCuisines = user1Cuisines.filter(cuisine => 
+      user2Cuisines.includes(cuisine)
+    );
+
+    // Select cuisine preference
+    let cuisinePreference = 'Various';
+    if (commonCuisines.length > 0) {
+      cuisinePreference = commonCuisines[0];
+    } else if (user1Cuisines.length > 0) {
+      cuisinePreference = user1Cuisines[0];
+    }
+
+    // Capitalize interests
+    const formattedInterests = selectedInterests.map(
+      interest => interest.charAt(0).toUpperCase() + interest.slice(1)
+    );
 
     return (
       <Box>
@@ -73,7 +109,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({
           )}
         </Box>
         <Box fontSize="sm" mb={2}>
-          Shared Interests: {sharedInterests.join(', ')}
+          Shared Interests: {formattedInterests.join(', ') || 'No Specific Interests'}
         </Box>
         {!notification.actionTaken && (
           <HStack spacing={2} mt={2}>
