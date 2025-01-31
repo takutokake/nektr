@@ -48,15 +48,41 @@ export class TwilioService {
     );
   }
 
+  private extractCuisinePreference(
+    cuisinePreference?: string, 
+    commonCuisines?: string[]
+  ): string {
+    return (cuisinePreference && cuisinePreference.toLowerCase() !== 'various')
+      ? cuisinePreference
+      : (commonCuisines?.[0] || 'Undecided');
+  }
+
+  private extractCommonInterests(
+    commonInterests?: string[]
+  ): string[] {
+    return commonInterests && commonInterests.length > 0
+      ? commonInterests
+      : ['No Specific Interests'];
+  }
+
   /**
    * Send SMS to a matched user via Firestore messages collection
    * @param user User profile to send SMS to
    * @param matchDetails Details about the match
    */
-  public async sendMatchSMS(user: UserProfile, matchDetails: {
-    dropTitle: string;
-    matchedUserName: string;
-  }): Promise<void> {
+  public async sendMatchSMS(
+    user: UserProfile, 
+    matchDetails: {
+      dropId: string;
+      dropTitle: string;
+      matchedUserName: string;
+      cuisinePreference?: string;
+      commonCuisines?: string[];
+      commonInterests?: string[];
+      compatibility?: number;
+      participants?: Record<string, UserProfile>;
+    }
+  ): Promise<void> {
     try {
       // Ensure phone number is verified and SMS notifications are enabled
       const extendedUser = user as UserProfile & {
@@ -70,10 +96,44 @@ export class TwilioService {
         return;
       }
 
+      // Extract cuisine preference with intelligent fallback
+      const cuisinePreference = this.extractCuisinePreference(
+        matchDetails.cuisinePreference, 
+        matchDetails.commonCuisines
+      );
+
+      // Extract common interests with fallback
+      const commonInterests = this.extractCommonInterests(
+        matchDetails.commonInterests
+      );
+
+      // Prepare SMS body with more context
+      const cuisineText = cuisinePreference !== 'Undecided' 
+        ? `Cuisine Preference: ${cuisinePreference}` 
+        : '';
+      
+      const interestsText = commonInterests[0] !== 'No Specific Interests'
+        ? `Shared Interests: ${commonInterests.join(', ')}`
+        : '';
+      
+      const compatibilityText = matchDetails.compatibility
+        ? `Compatibility: ${Math.round(matchDetails.compatibility * 100)}%`
+        : '';
+
+      const messageBody = [
+        `Hey ${user.displayName}!`,
+        `You've been matched for the drop: ${matchDetails.dropTitle}`,
+        `Match: ${matchDetails.matchedUserName}`,
+        cuisineText,
+        interestsText,
+        compatibilityText,
+        'Enjoy your meetup!'
+      ].filter(Boolean).join('\n');
+
       // Create message document in Firestore for Twilio extension to process
       const messagePayload: TwilioMessagePayload = {
         to: extendedUser.phoneNumber!,
-        body: `Hey ${user.displayName}! You've been matched for the drop: ${matchDetails.dropTitle}. Your match is ${matchDetails.matchedUserName}. Enjoy your meetup!`
+        body: messageBody
       };
 
       console.log('Attempting to queue SMS:', {
@@ -102,8 +162,14 @@ export class TwilioService {
   public async sendMatchSMSToMultipleUsers(
     users: UserProfile[], 
     matchDetails: {
+      dropId: string;
       dropTitle: string;
       matchedUserName: string;
+      cuisinePreference?: string;
+      commonCuisines?: string[];
+      commonInterests?: string[];
+      compatibility?: number;
+      participants?: Record<string, UserProfile>;
     }
   ): Promise<void> {
     try {

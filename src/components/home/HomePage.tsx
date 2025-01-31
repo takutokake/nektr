@@ -52,6 +52,7 @@ import {
 } from 'firebase/firestore';
 import { dropsService } from '../../services/dropsService';
 import { useMatchRegistration } from '../../hooks/useMatchRegistration';
+import { MatchNotificationModal } from '../notifications/MatchNotificationModal';
 
 interface HomePageProps {
   user: UserProfile;
@@ -69,6 +70,7 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const [participantsCache, setParticipantsCache] = useState<{[key: string]: any}>({});
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [currentMatchNotification, setCurrentMatchNotification] = useState<Notification | null>(null);
   const bgColor = useColorModeValue('gray.50', 'gray.900');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const toast = useToast();
@@ -93,6 +95,14 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
 
     fetchDrops();
   }, []);
+
+  useEffect(() => {
+    const matchNotification = notifications.find(
+      n => n.type === 'match' && !n.read
+    );
+    
+    setCurrentMatchNotification(matchNotification || null);
+  }, [notifications]);
 
   const handleOpenProfileModal = () => {
     setIsProfileModalOpen(true);
@@ -652,6 +662,28 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
         onClose={handleCloseProfileModal} 
         initialData={user}
       />
+
+      {currentMatchNotification && (
+        <MatchNotificationModal
+          isOpen={!!currentMatchNotification}
+          onClose={() => {
+            // Mark notification as read if not explicitly accepted/declined
+            if (currentMatchNotification) {
+              handleMarkAsRead(currentMatchNotification.id);
+            }
+            setCurrentMatchNotification(null);
+          }}
+          notification={currentMatchNotification}
+          onAcceptMatch={async (notificationId, matchDetails) => {
+            await handleAcceptMatch(notificationId, matchDetails);
+            setCurrentMatchNotification(null);
+          }}
+          onDeclineMatch={async (notificationId, matchDetails) => {
+            await handleDeclineMatch(notificationId, matchDetails);
+            setCurrentMatchNotification(null);
+          }}
+        />
+      )}
 
       <Container maxW="container.xl" py={8}>
         <Grid templateColumns="repeat(3, 1fr)" gap={6}>
