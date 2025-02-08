@@ -44,7 +44,8 @@ import {
   getDoc,
   orderBy,
   updateDoc,
-  DocumentData
+  DocumentData,
+  limit as firestoreLimit
 } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { 
@@ -527,7 +528,7 @@ export default function AdminDashboard() {
     try {
       setLoading(true);
       const dropsRef = collection(db, 'drops');
-      const q = query(dropsRef, orderBy('startTime', 'desc'));
+      const q = query(dropsRef, orderBy('startTime', 'desc'), firestoreLimit(20)); // Only fetch last 20 drops
       const querySnapshot = await getDocs(q);
       
       const fetchedDrops: Drop[] = querySnapshot.docs.map((doc) => ({
@@ -537,9 +538,9 @@ export default function AdminDashboard() {
       
       setDrops(fetchedDrops);
 
-      for (const drop of fetchedDrops) {
-        await fetchDropMatchesById(drop.id);
-      }
+      // Fetch matches in parallel
+      const matchPromises = fetchedDrops.map(drop => fetchDropMatchesById(drop.id));
+      await Promise.all(matchPromises);
     } catch (error) {
       console.error('Error fetching drops:', error);
       toast({

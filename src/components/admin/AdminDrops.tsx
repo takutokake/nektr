@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   VStack, 
@@ -30,10 +30,13 @@ interface AdminDropsProps {
   onDropCreated?: (drop: Drop) => void;
 }
 
+const LOCATIONS = [
+  { value: 'USC', label: 'USC Area', description: 'University Park & surrounding neighborhoods' },
+  { value: 'UCLA', label: 'UCLA Area', description: 'Westwood & surrounding neighborhoods' }
+];
+
 const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
   const toast = useToast();
-  const [upcomingDrops, setUpcomingDrops] = useState<Drop[]>([]);
-  const [isLoadingDrops, setIsLoadingDrops] = useState(true);
   const [dropData, setDropData] = useState({
     title: '',
     description: '',
@@ -49,28 +52,6 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
     isSpecialEvent: false
   });
 
-  useEffect(() => {
-    fetchUpcomingDrops();
-  }, []);
-
-  const fetchUpcomingDrops = async () => {
-    try {
-      setIsLoadingDrops(true);
-      const drops = await dropsService.getUpcomingDropsForAdmin(5); // Only fetch 5 most recent drops
-      setUpcomingDrops(drops);
-    } catch (error) {
-      console.error('Error fetching drops:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load upcoming drops',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
-    } finally {
-      setIsLoadingDrops(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -129,8 +110,7 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
         isSpecialEvent: false
       });
 
-      // Refresh the drops list
-      fetchUpcomingDrops();
+
     } catch (error) {
       toast({
         title: "Error",
@@ -160,43 +140,6 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
 
   return (
     <Stack spacing={8} p={6}>
-      {/* Upcoming Drops Section */}
-      <Box>
-        <Heading size="md" mb={4}>Recent Upcoming Drops</Heading>
-        {isLoadingDrops ? (
-          <Box textAlign="center" py={4}>
-            <Spinner />
-          </Box>
-        ) : (
-          <Stack spacing={4}>
-            {upcomingDrops.map(drop => (
-              <Card key={drop.id} variant="outline">
-                <CardBody>
-                  <Stack spacing={2}>
-                    <Heading size="sm">{drop.title}</Heading>
-                    <Text color="gray.600">
-                      Date: {drop.startTime.toDate().toLocaleDateString()}
-                    </Text>
-                    <Text>Location: {drop.location}</Text>
-                    <Text>
-                      Participants: {drop.currentParticipants}/{drop.maxParticipants}
-                    </Text>
-                    <Button
-                      colorScheme="blue"
-                      size="sm"
-                      onClick={() => {
-                        // Handle generate matches
-                      }}
-                    >
-                      Generate Matches
-                    </Button>
-                  </Stack>
-                </CardBody>
-              </Card>
-            ))}
-          </Stack>
-        )}
-      </Box>
 
       {/* Create Drop Form */}
       <Box borderWidth={1} borderRadius="lg" p={6}>
@@ -265,14 +208,20 @@ const AdminDrops: React.FC<AdminDropsProps> = ({ onDropCreated }) => {
               </HStack>
             </FormControl>
 
-            <FormControl>
+            <FormControl isRequired>
               <FormLabel>Location</FormLabel>
-              <Input 
+              <Select
                 name="location"
                 value={dropData.location}
                 onChange={handleInputChange}
-                placeholder="Enter location"
-              />
+                placeholder="Select location"
+              >
+                {LOCATIONS.map((location) => (
+                  <option key={location.value} value={location.value}>
+                    {location.label} - {location.description}
+                  </option>
+                ))}
+              </Select>
             </FormControl>
 
             <FormControl>

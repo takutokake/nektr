@@ -8,13 +8,14 @@ import AdminDashboard from './components/admin/AdminDashboard'
 import ProfileCreation from './components/ProfileCreation'
 import LandingPage from './pages/LandingPage'  
 import PrivacyPolicy from './pages/PrivacyPolicy' 
-import TermsOfService from './pages/TermsOfService' // Add this line
+import TermsOfService from './pages/TermsOfService'
 import { Drop, UserProfile } from './types'
 import { dropsService } from './services/dropsService'
 import { db } from './firebase'
 import { doc, getDoc } from 'firebase/firestore'
 import { Routes, Route, useNavigate, Navigate } from 'react-router-dom'
 import { User } from 'firebase/auth';
+import { useAnalytics } from './hooks/useAnalytics';
 
 function App() {
   const { user, loading, error, logout } = useAuth();
@@ -24,6 +25,7 @@ function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const toast = useToast();
   const navigate = useNavigate();
+  const analytics = useAnalytics();
 
   useEffect(() => {
     const fetchDrops = async () => {
@@ -91,7 +93,7 @@ function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/privacy" element={<PrivacyPolicy />} /> 
-      <Route path="/terms" element={<TermsOfService />} /> // Add this line
+      <Route path="/terms" element={<TermsOfService />} /> 
 
       {/* Protected Routes */}
       {user ? (

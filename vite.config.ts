@@ -14,7 +14,32 @@ export default defineConfig({
           }
         }
       }
+    },
+    chunkSizeWarningLimit: 1000,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
     }
   },
-  base: '/'
+  base: '/',
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@chakra-ui/react'
+    ],
+    exclude: ['js-big-decimal']
+  },
+  server: {
+    hmr: {
+      overlay: false
+    },
+    warmup: {
+      clientFiles: ['./src/main.tsx', './src/App.tsx']
+    }
+  }
 })

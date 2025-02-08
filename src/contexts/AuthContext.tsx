@@ -11,6 +11,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
 import { Timestamp } from 'firebase/firestore';
+import { analyticsService } from '../services/analyticsService'; // Import analytics
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -95,6 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const provider = new GoogleAuthProvider();
       await signInWithRedirect(auth, provider);
+      analyticsService.trackEvent('login', { method: 'google' }); // Track login event
     } catch (err) {
       console.error('Error logging in:', err);
       setError(err instanceof Error ? err : new Error('Login error'));
@@ -114,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userProfile = defaultUserProfile(firebaseUser);
             setDoc(userRef, userProfile);
             setUser(userProfile);
+            analyticsService.trackEvent('signup', { method: 'google' }); // Track signup event
           } else {
             // Existing user, but might need profile completion
             userProfile = userDoc.data() as UserProfile;

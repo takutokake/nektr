@@ -96,7 +96,10 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
   }, [user, drops]);
 
   const joinDrop = useCallback(async (drop: Drop) => {
+    console.log('Attempting to join drop:', drop.id);
     const currentUser = user || auth.currentUser;
+    
+    console.log('Current User:', currentUser ? currentUser.uid : 'No User');
     
     if (!currentUser) {
       toast({
@@ -109,8 +112,14 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
       return;
     }
 
+    console.log('Joining Drops:', Array.from(joiningDrops));
+    console.log('Registered Drops:', Array.from(registeredDrops));
+
     // Prevent multiple join attempts
-    if (joiningDrops.has(drop.id)) return;
+    if (joiningDrops.has(drop.id)) {
+      console.log('Already joining this drop');
+      return;
+    }
 
     // Check if user has already joined this drop
     if (registeredDrops.has(drop.id)) {
@@ -150,8 +159,14 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
             maxParticipants: drop.maxParticipants
           };
 
+      console.log('Participants Data:', participantsData);
+
       // Check if the drop is full
       if (participantsData.totalParticipants >= participantsData.maxParticipants) {
+        console.log('Drop is full', {
+          totalParticipants: participantsData.totalParticipants,
+          maxParticipants: participantsData.maxParticipants
+        });
         throw new Error('Drop is full');
       }
 
@@ -169,6 +184,8 @@ const useDropJoin = (drops: Drop[], onDropJoin?: (dropId: string) => void) => {
         },
         totalParticipants: participantsData.totalParticipants + 1
       };
+
+      console.log('Updated Participants:', updatedParticipants);
 
       // Update the participants document
       batch.set(participantsRef, updatedParticipants);
