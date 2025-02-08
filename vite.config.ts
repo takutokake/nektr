@@ -5,8 +5,12 @@ import { visualizer } from 'rollup-plugin-visualizer'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    react(),
-    // Add bundle visualizer for analysis
+    react({
+      // Ensure React refresh works properly
+      fastRefresh: true,
+      // Properly include React dependencies
+      include: "**/*.{jsx,tsx}",
+    }),
     visualizer({
       filename: './dist/stats.html',
       open: false,
@@ -21,10 +25,12 @@ export default defineConfig({
     // Enable code splitting and dynamic imports
     rollupOptions: {
       output: {
-        // More granular chunk splitting
+        // Ensure React is bundled correctly
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            // Split large libraries into their own chunks
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor'
+            }
             if (id.includes('@chakra-ui')) return 'chakra-ui'
             if (id.includes('firebase')) return 'firebase'
             if (id.includes('react-router')) return 'react-router'
