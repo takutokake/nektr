@@ -6,10 +6,12 @@ import { visualizer } from 'rollup-plugin-visualizer'
 export default defineConfig({
   plugins: [
     react({
+      jsxImportSource: '@emotion/react',
+      babel: {
+        plugins: ['@emotion/babel-plugin']
+      },
       // Ensure React refresh works properly
       fastRefresh: true,
-      // Properly include React dependencies
-      include: "**/*.{jsx,tsx}",
     }),
     visualizer({
       filename: './dist/stats.html',
@@ -25,10 +27,13 @@ export default defineConfig({
     // Enable code splitting and dynamic imports
     rollupOptions: {
       output: {
-        // Ensure React is bundled correctly
+        // Ensure proper bundling order
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom')) {
+            if (id.includes('react') || 
+                id.includes('react-dom') || 
+                id.includes('@emotion') || 
+                id.includes('framer-motion')) {
               return 'react-vendor'
             }
             if (id.includes('@chakra-ui')) return 'chakra-ui'
