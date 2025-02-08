@@ -20,26 +20,36 @@ export default defineConfig({
       brotliSize: true
     })
   ],
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      '@chakra-ui/react',
+      '@emotion/react',
+      '@emotion/styled',
+      'framer-motion'
+    ]
+  },
   build: {
     // Reduce chunk size warning limit
-    chunkSizeWarningLimit: 500,
+    chunkSizeWarningLimit: 1000,
+    sourcemap: true,
     
     // Enable code splitting and dynamic imports
     rollupOptions: {
       output: {
-        // Ensure proper bundling order
+        // Bundle React and UI libraries together
         manualChunks(id) {
           if (id.includes('node_modules')) {
             if (id.includes('react') || 
                 id.includes('react-dom') || 
+                id.includes('@chakra-ui') || 
                 id.includes('@emotion') || 
                 id.includes('framer-motion')) {
-              return 'react-vendor'
+              return 'vendor-ui'
             }
-            if (id.includes('@chakra-ui')) return 'chakra-ui'
-            if (id.includes('firebase')) return 'firebase'
-            if (id.includes('react-router')) return 'react-router'
-            return 'vendor'
+            if (id.includes('firebase')) return 'vendor-firebase'
+            return 'vendor-other'
           }
         }
       }
