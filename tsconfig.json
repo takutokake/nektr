@@ -19,8 +19,15 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["libphonenumber-js", "node"]
+    "types": ["libphonenumber-js", "node"],
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+    "composite": false,
+    "allowJs": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["src"],
+  "exclude": ["node_modules", "build", "dist", "scripts", "acceptance-tests", "webpack", "jest", "src/setupTests.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

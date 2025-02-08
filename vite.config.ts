@@ -1,45 +1,101 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { visualizer } from 'rollup-plugin-visualizer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Add bundle visualizer for analysis
+    visualizer({
+      filename: './dist/stats.html',
+      open: false,
+      gzipSize: true,
+      brotliSize: true
+    })
+  ],
   build: {
-    outDir: 'dist',
+    // Reduce chunk size warning limit
+    chunkSizeWarningLimit: 500,
+    
+    // Enable code splitting and dynamic imports
     rollupOptions: {
       output: {
+        // More granular chunk splitting
         manualChunks(id) {
           if (id.includes('node_modules')) {
-            return 'vendor';
+            // Split large libraries into their own chunks
+            if (id.includes('@chakra-ui')) return 'chakra-ui'
+            if (id.includes('firebase')) return 'firebase'
+            if (id.includes('react-router')) return 'react-router'
+            return 'vendor'
           }
         }
       }
     },
-    chunkSizeWarningLimit: 1000,
+    
+    // Minification and compression
     minify: 'terser',
     terserOptions: {
       compress: {
         drop_console: true,
-        drop_debugger: true
+        drop_debugger: true,
+        // More aggressive dead code elimination
+        dead_code: true,
+        pure_funcs: ['console.log']
+      },
+      // Preserve important comments
+      format: {
+        comments: false
       }
-    }
+    },
+    
+    // Enable source map for production debugging
+    sourcemap: true
   },
-  base: '/',
+  
+  // Optimize dependency pre-bundling
   optimizeDeps: {
     include: [
       'react',
       'react-dom',
       'react-router-dom',
-      '@chakra-ui/react'
+      '@chakra-ui/react',
+      'firebase/firestore',
+      'date-fns'
     ],
-    exclude: ['js-big-decimal']
+    exclude: [
+      'js-big-decimal',
+      // Exclude heavy or unnecessary dependencies
+      '@faker-js/faker'
+    ]
   },
+  
+  // Server optimization
   server: {
+    // Disable HMR overlay to reduce visual noise
     hmr: {
       overlay: false
     },
+    
+    // Warm up critical client files
     warmup: {
-      clientFiles: ['./src/main.tsx', './src/App.tsx']
-    }
+      clientFiles: [
+        './src/main.tsx', 
+        './src/App.tsx',
+        './src/routes.tsx'  // Add more entry points if needed
+      ]
+    },
+    
+    // Improve performance
+    strictPort: true,
+    port: 3000
+  },
+  
+  // Performance hints
+  performance: {
+    // Warn about large assets
+    maxEntrypointSize: 500000,
+    maxAssetSize: 500000
   }
 })

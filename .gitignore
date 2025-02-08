@@ -7,48 +7,85 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Node and dependency directories
+# Dependencies
 node_modules/
-npm-debug.log
-yarn-error.log
+.pnp/
+.pnp.js
 
 # Build outputs
 dist/
-dist-ssr
+dist-ssr/
 build/
 out/
+.next/
+.nuxt/
+.cache/
+.output/
+
+# TypeScript
+*.tsbuildinfo
+.tscache/
+node_modules/.cache/
 
 # Environment files
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-*.env*
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
-.idea/
-.vscode/
 *.swp
 *.swo
 *~
-
-# Sensitive credential files
-*serviceAccountKey.json
 
 # OS generated files
 .DS_Store
 .DS_Store?
 ._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Debug & Performance
+.clinic/
+.debug/
+profile/
+
+# Build tools
+.rollup.cache/
+.vite/
+
+# Sensitive credential files
+*serviceAccountKey.json
+*.pem
+*.key
+
+# Temporary files
+*.temp
+*.tmp
+.temp/
+.tmp/
+
+# Local development
+*.local
+
+# Firebase
+.firebase/
+.firebaserc
+firebase-debug.log
 .Spotlight-V100
 .Trashes
 ehthumbs.db

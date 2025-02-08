@@ -8,7 +8,7 @@ import {
   addDoc, 
   serverTimestamp, 
   startAfter,
-  limit as firestoreLimit  // Rename to avoid conflict
+  limit as firestoreLimit 
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Drop } from '../types';
@@ -19,8 +19,8 @@ interface CacheItem<T> {
   expiresAt: number;
 }
 
-class DropsCache {
-  private static instance: DropsCache;
+class DropsService {
+  private static instance: DropsService;
   private cache: Map<string, CacheItem<Drop[]>>;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
   private readonly MAX_CACHE_SIZE = 100; // Limit cache size
@@ -29,11 +29,11 @@ class DropsCache {
     this.cache = new Map();
   }
 
-  public static getInstance(): DropsCache {
-    if (!DropsCache.instance) {
-      DropsCache.instance = new DropsCache();
+  public static getInstance(): DropsService {
+    if (!DropsService.instance) {
+      DropsService.instance = new DropsService();
     }
-    return DropsCache.instance;
+    return DropsService.instance;
   }
 
   private getCacheKey(userId: string, options?: { page?: number, limit?: number }): string {
@@ -47,167 +47,153 @@ class DropsCache {
     options: { page?: number, limit?: number, forceRefresh?: boolean } = {}
   ): Promise<Drop[]> {
     const { page = 1, limit = 10, forceRefresh = false } = options;
+    const cacheKey = this.getCacheKey(userId, { page, limit });
+    const now = Date.now();
 
     if (!forceRefresh) {
-      const cacheKey = this.getCacheKey(userId, { page, limit });
-      const cachedData = this.cache.get(cacheKey);
-
-      if (cachedData && cachedData.expiresAt > Date.now()) {
-        return cachedData.data;
+      const cached = this.cache.get(cacheKey);
+      if (cached && now < cached.expiresAt) {
+        return cached.data;
       }
     }
 
-    const drops = await this.fetchUpcomingDrops(page, limit);
+    try {
+      const drops = await this.fetchUpcomingDrops(userId, page, limit);
+      this.cache.set(cacheKey, {
+        data: drops,
+        timestamp: now,
+        expiresAt: now + this.CACHE_DURATION
+      });
 
-    const cacheKey = this.getCacheKey(userId, { page, limit });
-    this.cache.set(cacheKey, {
-      data: drops,
-      timestamp: Date.now(),
-      expiresAt: Date.now() + this.CACHE_DURATION
-    });
+      // Implement cache size management
+      if (this.cache.size > this.MAX_CACHE_SIZE) {
+        const oldestKey = Array.from(this.cache.keys())[0];
+        this.cache.delete(oldestKey);
+      }
 
-    // Maintain cache size limit
-    if (this.cache.size > this.MAX_CACHE_SIZE) {
-      const oldestKey = Array.from(this.cache.entries())
-        .sort(([, a], [, b]) => a.timestamp - b.timestamp)[0][0];
-      this.cache.delete(oldestKey);
+      return drops;
+    } catch (error) {
+      console.error('Error fetching upcoming drops:', error);
+      return [];
     }
-
-    return drops;
   }
 
-  private async fetchUpcomingDrops(page: number = 1, limit: number = 10): Promise<Drop[]> {
-    const currentTime = new Date();
-    const oneMonthFromNow = new Date(currentTime.getTime() + 30 * 24 * 60 * 60 * 1000);
+  private async fetchUpcomingDrops(userId: string, page: number, limit: number): Promise<Drop[]> {
+    try {
+      const dropsRef = collection(db, 'drops');
+      const now = Timestamp.now();
+      
+      const q = query(
+        dropsRef,
+        where('userId', '==', userId),
+        where('startTime', '>', now),
+        orderBy('startTime', 'asc'),
+        firestoreLimit(limit),
+        startAfter(page * limit)
+      );
 
-    const dropsRef = collection(db, 'drops');
-    const q = query(
-      dropsRef, 
-      where('startTime', '>=', Timestamp.fromDate(currentTime)),
-      where('startTime', '<=', Timestamp.fromDate(oneMonthFromNow)),
-      orderBy('startTime', 'asc'),
-      firestoreLimit(limit)
-    );
-
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Drop));
-  }
-
-  async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
-    const dropsRef = collection(db, 'drops');
-    const docRef = await addDoc(dropsRef, {
-      ...drop,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
-
-    return {
-      id: docRef.id,
-      ...drop
-    } as Drop;
-  }
-
-  clearCache(userId: string): void {
-    const cacheKey = this.getCacheKey(userId);
-    this.cache.delete(cacheKey);
-  }
-
-  clearAllCache(): void {
-    this.cache.clear();
-  }
-}
-
-class DropsService {
-  private static instance: DropsService;
-  private cache: DropsCache;
-
-  private constructor() {
-    this.cache = DropsCache.getInstance();
-  }
-
-  public static getInstance(): DropsService {
-    if (!DropsService.instance) {
-      DropsService.instance = new DropsService();
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+    } catch (error) {
+      console.error('Error in fetchUpcomingDrops:', error);
+      return [];
     }
-    return DropsService.instance;
   }
 
-  async getDrops(options: {
-    page?: number;
-    limit?: number;
-    forceRefresh?: boolean;
+  public async getDrops(options: { 
+    page?: number, 
+    limit?: number, 
+    forceRefresh?: boolean 
   } = {}): Promise<{ drops: Drop[]; hasMore: boolean }> {
     const { page = 1, limit = 10, forceRefresh = false } = options;
-    const drops = await this.cache.getUpcomingDrops('admin', { page, limit, forceRefresh });
-    return {
-      drops,
-      hasMore: drops.length === limit
-    };
+    
+    try {
+      const drops = await this.getUpcomingDrops('current_user', { page, limit, forceRefresh });
+      // Implement hasMore logic based on returned drops
+      const hasMore = drops.length === limit;
+      
+      return { drops, hasMore };
+    } catch (error) {
+      console.error('Error getting drops:', error);
+      return { drops: [], hasMore: false };
+    }
   }
 
-  async getUpcomingDrops(
-    userId: string, 
-    page: number = 1, 
-    forceRefresh: boolean = false
-  ): Promise<{ drops: Drop[]; hasMore: boolean }> {
-    const limit = 10;
-    const drops = await this.cache.getUpcomingDrops(userId, { page, limit, forceRefresh });
-    return {
-      drops,
-      hasMore: drops.length === limit
-    };
+  public async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
+    try {
+      const docRef = await addDoc(collection(db, 'drops'), {
+        ...drop,
+        createdAt: serverTimestamp()
+      });
+
+      // Clear cache to ensure fresh data
+      this.clearCache();
+
+      return { id: docRef.id, ...drop };
+    } catch (error) {
+      console.error('Error creating drop:', error);
+      throw error;
+    }
   }
 
-  async createDrop(drop: Omit<Drop, 'id'>): Promise<Drop> {
-    return this.cache.createDrop(drop);
+  public async getUpcomingDropsForAdmin(maxResults: number = 50): Promise<Drop[]> {
+    try {
+      const dropsRef = collection(db, 'drops');
+      const now = Timestamp.now();
+      
+      const q = query(
+        dropsRef,
+        where('startTime', '>', now),
+        orderBy('startTime', 'asc'),
+        firestoreLimit(maxResults)
+      );
+
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+    } catch (error) {
+      console.error('Error getting upcoming drops for admin:', error);
+      return [];
+    }
   }
 
-  async getUpcomingDropsForAdmin(maxResults: number = 50): Promise<Drop[]> {
-    const currentTime = new Date();
-    const dropsRef = collection(db, 'drops');
-    const q = query(
-      dropsRef,
-      where('startTime', '>=', Timestamp.fromDate(currentTime)),
-      orderBy('startTime', 'asc'),
-      firestoreLimit(maxResults)
-    );
+  public async getPastDropsForMatching(maxResults: number = 50): Promise<Drop[]> {
+    try {
+      const dropsRef = collection(db, 'drops');
+      const now = Timestamp.now();
+      
+      const q = query(
+        dropsRef,
+        where('startTime', '<', now),
+        orderBy('startTime', 'desc'),
+        firestoreLimit(maxResults)
+      );
 
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Drop));
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Drop));
+    } catch (error) {
+      console.error('Error getting past drops for matching:', error);
+      return [];
+    }
   }
 
-  async getPastDropsForMatching(maxResults: number = 50): Promise<Drop[]> {
-    const currentTime = new Date();
-    const dropsRef = collection(db, 'drops');
-    const q = query(
-      dropsRef,
-      where('startTime', '<', Timestamp.fromDate(currentTime)),
-      orderBy('startTime', 'desc'),
-      firestoreLimit(maxResults)
-    );
-
-    const querySnapshot = await getDocs(q);
-    return querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Drop));
-  }
-
-  clearCache(userId?: string): void {
+  public clearCache(userId?: string): void {
     if (userId) {
-      this.cache.clearCache(userId);
+      const keys = Array.from(this.cache.keys()).filter(key => key.includes(userId));
+      keys.forEach(key => this.cache.delete(key));
     } else {
-      this.cache.clearAllCache();
+      this.cache.clear();
     }
   }
 }
 
 export const dropsService = DropsService.getInstance();
-export const dropsCache = DropsCache.getInstance();
 export default DropsService;

@@ -96,6 +96,5 @@ npm run dev
 Distributed under the MIT License.
 
 ## Contact
-Your Name - your.email@example.com
+Your Name - kakeda@usc.edu
 
-Project Link: [https://github.com/yourusername/nectr](https://github.com/yourusername/nectr)
