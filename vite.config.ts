@@ -4,7 +4,6 @@ import { visualizer } from 'rollup-plugin-visualizer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-
   plugins: [
     react({
       jsxImportSource: '@emotion/react',
@@ -21,6 +20,8 @@ export default defineConfig({
       brotliSize: true
     })
   ],
+  
+  // Basic dependency optimization
   optimizeDeps: {
     include: [
       'react',
@@ -29,80 +30,25 @@ export default defineConfig({
       '@chakra-ui/react',
       '@emotion/react',
       '@emotion/styled',
-      'framer-motion',
-      'firebase/firestore',
-      'date-fns'
-    ],
-    exclude: [
-      'js-big-decimal',
-      '@faker-js/faker'
+      'framer-motion'
     ]
   },
+  
+  // Build configuration
   build: {
-    // Reduce chunk size warning limit
-    chunkSizeWarningLimit: 1000,
-    sourcemap: true,
-    
-    // Enable code splitting and dynamic imports
-    rollupOptions: {
-      output: {
-        // Bundle React and UI libraries together
-        manualChunks(id) {
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || 
-                id.includes('react-dom') || 
-                id.includes('@chakra-ui') || 
-                id.includes('@emotion') || 
-                id.includes('framer-motion')) {
-              return 'vendor-ui'
-            }
-            if (id.includes('firebase')) return 'vendor-firebase'
-            return 'vendor-other'
-          }
-        }
-      }
-    },
-    
-    // Minification and compression
+    // Basic minification
     minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true,
-        // More aggressive dead code elimination
-        dead_code: true,
-        pure_funcs: ['console.log']
-      },
-      // Preserve important comments
-      format: {
-        comments: false
-      }
-    }
+    
+    // Enable source maps for debugging
+    sourcemap: true
   },
   
-  // Server optimization
+  // Server configuration
   server: {
-    // Disable HMR overlay to reduce visual noise
+    port: 3000,
+    strictPort: true,
     hmr: {
       overlay: false
-    },
-    // Warm up critical client files
-    warmup: {
-      clientFiles: [
-        './src/main.tsx', 
-        './src/App.tsx',
-        './src/routes.tsx'  // Add more entry points if needed
-      ]
-    },
-    // Improve performance
-    strictPort: true,
-    port: 5173
-  },
-  
-  // Performance hints
-  performance: {
-    // Warn about large assets
-    maxEntrypointSize: 500000,
-    maxAssetSize: 500000
+    }
   }
 })
