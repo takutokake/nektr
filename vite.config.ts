@@ -24,10 +24,17 @@ export default defineConfig({
     include: [
       'react',
       'react-dom',
+      'react-router-dom',
       '@chakra-ui/react',
       '@emotion/react',
       '@emotion/styled',
-      'framer-motion'
+      'framer-motion',
+      'firebase/firestore',
+      'date-fns'
+    ],
+    exclude: [
+      'js-big-decimal',
+      '@faker-js/faker'
     ]
   },
   build: {
@@ -69,27 +76,7 @@ export default defineConfig({
       format: {
         comments: false
       }
-    },
-    
-    // Enable source map for production debugging
-    sourcemap: true
-  },
-  
-  // Optimize dependency pre-bundling
-  optimizeDeps: {
-    include: [
-      'react',
-      'react-dom',
-      'react-router-dom',
-      '@chakra-ui/react',
-      'firebase/firestore',
-      'date-fns'
-    ],
-    exclude: [
-      'js-big-decimal',
-      // Exclude heavy or unnecessary dependencies
-      '@faker-js/faker'
-    ]
+    }
   },
   
   // Server optimization
@@ -98,7 +85,6 @@ export default defineConfig({
     hmr: {
       overlay: false
     },
-    
     // Warm up critical client files
     warmup: {
       clientFiles: [
@@ -107,7 +93,6 @@ export default defineConfig({
         './src/routes.tsx'  // Add more entry points if needed
       ]
     },
-    
     // Improve performance
     strictPort: true,
     port: 3000
