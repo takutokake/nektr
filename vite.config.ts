@@ -4,6 +4,7 @@ import { visualizer } from 'rollup-plugin-visualizer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+
   plugins: [
     react({
       jsxImportSource: '@emotion/react',
@@ -95,7 +96,7 @@ export default defineConfig({
     },
     // Improve performance
     strictPort: true,
-    port: 3000
+    port: 5173
   },
   
   // Performance hints
