@@ -25,13 +25,7 @@ function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const toast = useToast();
   const navigate = useNavigate();
-  
-  // Initialize analytics after auth is ready
-  useEffect(() => {
-    if (!loading) {
-      useAnalytics();
-    }
-  }, [loading]);
+  const analytics = useAnalytics(); // Move hook to top level
 
   useEffect(() => {
     const fetchDrops = async () => {
