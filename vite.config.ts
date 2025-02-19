@@ -6,18 +6,13 @@ import { visualizer } from 'rollup-plugin-visualizer'
 export default defineConfig({
   plugins: [
     react({
-      jsxImportSource: '@emotion/react',
       babel: {
         plugins: ['@emotion/babel-plugin']
-      },
-      // Ensure React refresh works properly
-      fastRefresh: true,
+      }
     }),
     visualizer({
       filename: './dist/stats.html',
-      open: false,
-      gzipSize: true,
-      brotliSize: true
+      open: false
     })
   ],
   
@@ -45,8 +40,6 @@ export default defineConfig({
   
   // Server configuration
   server: {
-    port: 3000,
-    strictPort: true,
     hmr: {
       overlay: false
     }

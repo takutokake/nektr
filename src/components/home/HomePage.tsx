@@ -68,6 +68,27 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
   const [dropsData, setDropsData] = useState<Drop[]>([]);
   const [dropsCache, setDropsCache] = useState<{[key: string]: Drop}>({});
   const [participantsCache, setParticipantsCache] = useState<{[key: string]: any}>({});
+  const [currentUser, setCurrentUser] = useState(user);
+
+  // Update currentUser when user prop changes
+  useEffect(() => {
+    setCurrentUser(user);
+  }, [user]);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user) {
+        setCurrentUser({
+          ...currentUser,
+          photoURL: user.photoURL || undefined,
+          displayName: user.displayName || ''
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [currentMatchNotification, setCurrentMatchNotification] = useState<Notification | null>(null);
@@ -629,7 +650,8 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
             >
               <Avatar
                 size={'sm'}
-                src={user?.photoURL || undefined}
+                src={currentUser?.photoURL || undefined}
+                key={currentUser?.photoURL} // Force re-render when URL changes
               />
             </MenuButton>
             <MenuList alignItems={'center'}>
@@ -637,7 +659,8 @@ const HomePage: React.FC<HomePageProps> = ({ user, drops = [], onSignOut }) => {
               <Center>
                 <Avatar
                   size={'2xl'}
-                  src={user?.photoURL || undefined}
+                  src={currentUser?.photoURL || undefined}
+                  key={currentUser?.photoURL} // Force re-render when URL changes
                 />
               </Center>
               <br />

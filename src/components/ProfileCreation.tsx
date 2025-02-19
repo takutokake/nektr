@@ -24,15 +24,17 @@ import {
   ChakraProvider,
   HStack,
   WrapItem,
-  FormHelperText
+  FormHelperText,
+  Avatar
 } from '@chakra-ui/react';
-import { ArrowBackIcon, ChevronDownIcon, ChevronUpIcon } from '@chakra-ui/icons';
+import { ArrowBackIcon, ChevronDownIcon, ChevronUpIcon, AddIcon } from '@chakra-ui/icons';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { User, signOut } from 'firebase/auth';
 import { auth, db } from '../firebase';
 import { UserProfile } from '../types';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { uploadProfilePicture, compressImage } from '../services/storageService';
 
 const INTERESTS = [
   'Technology', 'Arts', 'Sports', 'Music', 'Travel', 
@@ -81,6 +83,7 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
   const [rawPhoneNumber, setRawPhoneNumber] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [smsConsent, setSmsConsent] = useState(false);
+  const [profileImage, setProfileImage] = useState(user?.photoURL || null);
   const toast = useToast();
   const navigate = useNavigate();
   const [openSection, setOpenSection] = useState<string | null>(null);
@@ -273,7 +276,8 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
         id: (user as User).uid || (user as UserProfile).uid,
         phoneNumber: rawPhoneNumber ? `+1${rawPhoneNumber}` : undefined,
         phoneNumberVerified: !!rawPhoneNumber,
-        smsNotificationsEnabled: smsConsent
+        smsNotificationsEnabled: smsConsent,
+        photoURL: profileImage
       };
 
       console.log('Attempting to save profile:', profileData);
@@ -304,6 +308,33 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
 
   const toggleSection = (sectionName: string) => {
     setOpenSection(prev => prev === sectionName ? null : sectionName);
+  };
+
+  const handleProfilePictureUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressedFile = await compressImage(file);
+      const downloadURL = await uploadProfilePicture(compressedFile);
+      setProfileImage(downloadURL);
+      
+      toast({
+        title: 'Profile Picture Updated',
+        description: 'Your profile picture has been successfully uploaded',
+        status: 'success',
+        duration: 3000,
+        isClosable: true
+      });
+    } catch (error) {
+      toast({
+        title: 'Upload Failed',
+        description: (error as Error).message || 'Failed to upload profile picture',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      });
+    }
   };
 
   const CollapsibleSection = ({ 
@@ -506,6 +537,24 @@ const ProfileCreation: React.FC<ProfileCreationProps> = ({ user, onComplete }) =
                         Please select at least one cuisine preference
                       </FormHelperText>
                     )}
+                  </FormControl>
+                </CollapsibleSection>
+
+                <CollapsibleSection title="Profile Picture" sectionName="profile-picture">
+                  <FormControl>
+                    <FormLabel>Upload Profile Picture</FormLabel>
+                    <Avatar 
+                      size="2xl" 
+                      src={profileImage || ''} 
+                      name={displayName}
+                    />
+                    <Input 
+                      type="file" 
+                      onChange={handleProfilePictureUpload}
+                      accept="image/*"
+                      variant="filled"
+                      mt={2}
+                    />
                   </FormControl>
                 </CollapsibleSection>
 

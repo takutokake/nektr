@@ -8,7 +8,10 @@ import {
   addDoc, 
   serverTimestamp, 
   startAfter,
-  limit as firestoreLimit 
+  limit as firestoreLimit,
+  doc,
+  getDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Drop } from '../types';
@@ -182,6 +185,30 @@ class DropsService {
     } catch (error) {
       console.error('Error getting past drops for matching:', error);
       return [];
+    }
+  }
+
+  public async handleDropRegistrationEnd(dropId: string): Promise<boolean> {
+    try {
+      // Fetch the drop details
+      const dropRef = doc(db, 'drops', dropId);
+      const dropSnap = await getDoc(dropRef);
+      
+      if (!dropSnap.exists()) {
+        console.error('Drop not found');
+        return false;
+      }
+
+      // Update drop status to indicate registration has ended
+      await updateDoc(dropRef, {
+        registrationClosed: true,
+        registrationClosedAt: serverTimestamp()
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error handling drop registration end:', error);
+      return false;
     }
   }
 

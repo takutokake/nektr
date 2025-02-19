@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -23,12 +23,15 @@ import {
   WrapItem,
   Tag,
   TagLabel,
-  TagCloseButton
+  TagCloseButton,
+  IconButton
 } from '@chakra-ui/react';
 import { useAuth } from '../contexts/AuthContext';
 import { updateUserProfile } from '../services/userService';
 import { UserProfile } from '../types';
 import { parsePhoneNumber, isValidPhoneNumber } from 'libphonenumber-js';
+import { AddIcon } from '@chakra-ui/icons';
+import { uploadProfilePicture, compressImage } from '../services/storageService';
 
 interface LocationOption {
   value: string;
@@ -59,8 +62,8 @@ const INTERESTS = [
 const CUISINES = [
   'Italian', 'Japanese', 'Mexican', 'Chinese', 'Indian', 
   'Thai', 'Mediterranean', 'American', 'Korean', 'French',
-  'Spanish', 'Vietnamese', 'Greek', 'Turkish', 'Argentinian',
-  'Irish', 'Greek', 'Polish', 'Czech', 'Russian'
+  'Spanish', 'Vietnamese', 'Turkish', 'Argentinian',
+  'Irish', 'Polish', 'Czech', 'Russian'
 ];
 
 const PRICE_RANGES = ['$', '$$', '$$$', '$$$$'];
@@ -97,6 +100,10 @@ const ProfileModal: React.FC<{
   const [smsConsent, setSmsConsent] = useState(
     (initialData as any)?.smsNotificationsEnabled || false
   );
+
+  const [isUploading, setIsUploading] = useState(false);
+  const [profileImage, setProfileImage] = useState<string | null>(user?.photoURL || null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -215,6 +222,49 @@ const ProfileModal: React.FC<{
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploading(true);
+      
+      // Compress the image
+      const compressedFile = await compressImage(file);
+      
+      // Upload the compressed image
+      const downloadURL = await uploadProfilePicture(compressedFile);
+      
+      // Update local state
+      setProfileImage(downloadURL);
+      setProfileData(prev => ({ ...prev, photoURL: downloadURL }));
+      
+      // Show success toast
+      toast({
+        title: 'Profile Picture Updated',
+        description: 'Your profile picture has been successfully uploaded',
+        status: 'success',
+        duration: 3000,
+        isClosable: true
+      });
+    } catch (error) {
+      // Show error toast
+      toast({
+        title: 'Upload Failed',
+        description: (error as Error).message || 'Failed to upload profile picture',
+        status: 'error',
+        duration: 3000,
+        isClosable: true
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
@@ -227,14 +277,33 @@ const ProfileModal: React.FC<{
               <Avatar 
                 size="2xl" 
                 name={profileData.displayName} 
-                src={profileData.photoURL} 
-              />
+                src={profileImage || ''}
+              >
+                <IconButton
+                  icon={<AddIcon />}
+                  position="absolute"
+                  bottom="0"
+                  right="0"
+                  borderRadius="full"
+                  size="sm"
+                  onClick={triggerFileInput}
+                  isLoading={isUploading}
+                  aria-label="Upload Profile Picture"
+                />
+              </Avatar>
               <VStack align="start" spacing={2}>
                 <Text fontSize="xl" fontWeight="bold">
                   {profileData.displayName}
                 </Text>
                 <Text color="gray.500">{profileData.email}</Text>
               </VStack>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                accept="image/*"
+                style={{ display: 'none' }}
+              />
             </HStack>
 
             <FormControl>
