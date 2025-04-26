@@ -92,9 +92,6 @@ npm run dev
 - Add comments for complex logic
 - Write unit tests for new features
 
-## License
-Distributed under the MIT License.
-
 ## Contact
 Your Name - kakeda@usc.edu
 
